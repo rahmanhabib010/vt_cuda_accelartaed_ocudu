@@ -1,0 +1,41 @@
+# Build directories
+build*/
+cmake-build-*/
+
+# Compiled objects
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+# Executables
+ldpc_loopback_test
+ber_bler_sweep
+modulation_test
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+build_debug/

@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: Copyright (C) 2021-2026 Software Radio Systems Limited
+// SPDX-License-Identifier: BSD-3-Clause-Open-MPI
+// Portions of this file may implement 3GPP specifications, which may be subject to additional licensing requirements.
+
+#pragma once
+
+#include "external/fmt/include/fmt/core.h"
+#include "ocudu/ocudulog/logger.h"
+#include "ocudu/support/versioning/build_info.h"
+
+namespace ocudu {
+namespace app_services {
+
+/// \brief Application message banners service.
+///
+/// Announces in STDOUT when the application starts and stops.
+class application_message_banners
+{
+public:
+  /// Announces the application started.
+  application_message_banners(std::string_view app_name, std::string_view log_filename_) : log_filename(log_filename_)
+  {
+    fmt::print("==== {} started ===\n", app_name);
+    fmt::print("Type <h> to view help\n");
+  }
+
+  /// Announces the application is stopping.
+  ~application_message_banners()
+  {
+    fmt::print("Stopping...\n");
+    if (!log_filename.empty()) {
+      fmt::print("Logfile stored in {}\n", log_filename);
+    }
+  }
+
+  /// Announces the application name and version using its build hash.
+  static void announce_app_and_version(std::string_view app_name)
+  {
+    fmt::print("\n--== OCUDU {} (commit {}) ==--\n\n", app_name, get_build_hash());
+  }
+
+  /// Logs in the given logger application build parameters.
+  static void log_build_info(ocudulog::basic_logger& logger)
+  {
+    // Log build info
+    logger.info("Built in {} mode using {}", get_build_mode(), get_build_info());
+  }
+
+private:
+  std::string log_filename;
+};
+
+} // namespace app_services
+} // namespace ocudu

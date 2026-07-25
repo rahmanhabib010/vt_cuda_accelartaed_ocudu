@@ -1,0 +1,162 @@
+/*!
+\page phy_acceleration_architecture PHY Acceleration
+
+PHY acceleration is integrated as an optional implementation detail of PHY and
+Open Fronthaul processing. The generic modem logic depends on existing OCUDU
+interfaces and implementation-neutral resident-buffer contracts. Concrete
+accelerator details such as CUDA streams, CUDA-visible buffers and CUDA
+kernels stay in backend factories or backend implementation files.
+
+\section phy_acceleration_goals Design Goals
+
+- Keep dependency arrows pointing inward. Generic PUSCH, PDSCH, PRACH, SRS,
+  lower-PHY and OFH orchestration code must depend on OCUDU interfaces, not
+  concrete accelerator classes.
+- Preserve substitutability. Host-only, hardware-accelerated and CUDA-backed
+  implementations must satisfy the same public contracts and continue to build
+  when CUDA support is disabled.
+- Keep real-time paths explicit. Resident buffers avoid unnecessary host-device
+  transfers, but ownership and synchronization are represented by small opaque
+  tokens rather than leaking backend types into generic call sites.
+- Keep factories responsible for selection. Mode parsing, availability checks,
+  concrete backend construction and fallback selection belong in factory or
+  strategy modules, not in protocol or slot-processing logic.
+
+\section phy_acceleration_configuration Configuration Surface
+
+Acceleration is selected through the existing application configuration model.
+The expert PHY, SDR RU and OFH cell configuration structures expose string modes
+whose values are \c auto, \c enabled and \c disabled. The \c auto mode lets the
+factory choose an accelerated implementation when the build, platform and PDU
+shape support it. The \c enabled mode requires the accelerated path and fails
+configuration or factory creation when it is unavailable. The \c disabled mode
+keeps the host implementation selected.
+
+Upper-PHY controls cover PUSCH, PDSCH, PRACH detection, SRS estimation, PDSCH
+acceleration lanes and the accelerated LDPC decoder algorithm. SDR RU controls
+cover lower-PHY transmit baseband processing, regular receive OFDM demodulation
+and PRACH OFDM demodulation. OFH cell controls cover User-Plane IQ compression
+and decompression acceleration.
+
+\section phy_acceleration_layers Layering
+
+The public acceleration boundary is declared in implementation-neutral types.
+\ref ocudu::resident_softbit_buffer, \ref ocudu::resident_uci_buffer and
+\ref ocudu::pusch_resident_demodulation_config describe resident PUSCH data and
+execution dependencies without naming a concrete runtime API.
+\ref ocudu::resource_grid_reader, \ref ocudu::resource_grid_writer and
+\ref ocudu::prach_buffer expose optional device-capable hooks while preserving
+the host resource-grid contract. OFH compression and U-Plane decoder interfaces
+expose optional direct grid and PRACH-buffer paths that return false when an
+implementation cannot use them.
+
+The generic PUSCH processor consumes the resident PUSCH demodulator and decoder
+methods. It does not include CUDA or CUDA headers. PDSCH uses a
+\ref ocudu::pdsch_grid_output_strategy to choose how a processed PDSCH writes
+into the downlink resource grid. Upper PHY resource-grid selection is isolated in
+the PHY acceleration resource-grid factory helper. Lower-PHY transmit and
+receive paths select accelerated OFDM and baseband implementations through their
+standard factories. OFH compression selection is kept in the compression factory
+and the U-Plane message builder/decoder paths.
+
+Concrete CUDA code lives in backend implementation modules, for example
+the CUDA LDPC adapter, PUSCH CUDA demodulator, PDSCH CUDA block processor,
+PRACH detector, SRS estimator, lower-PHY OFDM demodulators, lower-PHY transmit
+modulator, OFH compression adapter and CUDA-visible resource-grid
+implementation. These modules may include CUDA headers and use backend-specific
+synchronization.
+
+\section phy_acceleration_processing_paths Processing Paths
+
+PUSCH acceleration covers resource-grid reading, channel estimation handoff,
+resident demodulation, optional resident UCI compaction and resident LDPC
+decoding. Host demodulation and host decode remain available for unsupported
+PDU shapes and for CUDA-disabled builds.
+
+PDSCH acceleration covers transport-block encoding, modulation and resource-grid
+mapping. The PDSCH processor writes through a grid output strategy so host-grid,
+device-grid and sidecar-grid implementations remain interchangeable.
+
+PRACH acceleration has two independent stages: lower-PHY PRACH OFDM
+demodulation, which produces PRACH buffer contents, and upper-PHY PRACH
+detection, which consumes the buffer. The PRACH buffer interface carries the
+optional resident-buffer hooks used to connect those stages.
+
+SRS acceleration is selected at the SRS estimator factory. The generic estimator
+interface and caller-visible result types are unchanged.
+
+Lower-PHY acceleration covers transmit baseband modulation, regular PUxCH OFDM
+demodulation and PRACH OFDM demodulation. Optional packed-sample methods allow
+implementations to consume radio \c ci16 buffers directly when supported.
+
+OFH acceleration covers BFP compression and decompression for host spans,
+resource grids, PRACH buffers, contiguous port batches and symbol batches. The
+same compressor and decoder interfaces preserve the host fallback path.
+
+\section phy_acceleration_contracts Interface Contracts
+
+Resident PUSCH handoff follows this contract:
+
+- The demodulator may advertise resident mode support.
+- When resident mode is enabled, the demodulator may return an accelerator-owned
+  softbit buffer and optional compact UCI output.
+- The decoder may advertise resident decode support and consume the resident
+  softbit buffer without requiring a host softbit copy.
+- Opaque execution and completion tokens are valid only for the backend that
+  produced them.
+- If any implementation cannot honor the resident contract for a PDU, it must
+  return false or an invalid buffer and allow the host path to run.
+
+The public resident PUSCH handoff API is expressed in accelerator-owned buffer
+terms. Concrete backend details remain in the corresponding implementation
+modules.
+
+Device-capable resource-grid and PRACH-buffer hooks follow this contract:
+
+- A capability method advertises whether the optional device path is supported.
+- Opaque device pointers and synchronization tokens are valid only for the
+  implementation that produced them.
+- Prepare, enqueue and synchronize methods are backend handshakes; host-only
+  implementations return the default fallback values.
+- If an accelerated mapping or read cannot be used for a PDU, the caller must
+  continue through the host path.
+
+OFH direct compression and decompression follows this contract:
+
+- Direct grid and PRACH-buffer methods return true only after fully producing
+  the requested payload or destination range.
+- A false return means the caller should use the ordinary host span path.
+- Batch methods use symbol-major or port-major layouts as documented by their
+  interface comments.
+
+\section phy_acceleration_runtime Runtime Policy
+
+Production configuration should use the implementation-neutral acceleration mode
+fields. Environment variables are reserved for platform policy overrides,
+focused profiling or sensitivity experiments. Any new runtime knob must be
+either promoted to the configuration schema with operator documentation or kept
+local to tests/benchmarks.
+
+The default OTA path on unified CUDA-memory platforms uses CUDA-visible resource
+grids and direct PDSCH device-grid mapping when available. Host, sidecar and
+direct-device PDSCH grid strategies remain substitutable behind
+\ref ocudu::pdsch_grid_output_strategy.
+
+\section phy_acceleration_realtime Real-Time Safety
+
+Acceleration code must avoid allocation and expensive setup on the slot critical
+path. Factories and warmup methods own persistent pools, device handles and
+preallocated workspaces. Runtime path selection must be predictable, and
+fallback to the host path must preserve correctness before performance.
+
+\section phy_acceleration_testing Testing Expectations
+
+Changes to this area should verify:
+
+- CUDA-enabled builds and focused accelerator E2E tests for PDSCH, PUSCH,
+  PRACH, SRS, lower PHY and OFH paths.
+- CUDA-disabled upper-PHY builds to prove concrete accelerator types do not leak
+  into generic code.
+- CPU/GPU parity for transport blocks, CRC status and scheduler-visible metrics.
+- OTA validation when resource-grid or resident-buffer synchronization changes.
+*/
