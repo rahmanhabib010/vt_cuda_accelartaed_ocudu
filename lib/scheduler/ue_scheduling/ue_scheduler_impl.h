@@ -37,7 +37,11 @@ private:
 
   void run_slot_impl(slot_point sl_tx);
 
-  void run_sched_strategy(du_cell_index_t cell_index);
+  void run_dl_sched_strategy(du_cell_index_t cell_index);
+
+  /// Advances UL scheduling for one cell until it either reaches the newTx synchronization point or runs out of work.
+  /// Returns true if the cell has a pending batch that must be finalized.
+  bool collect_next_ul_sched_batch(du_cell_index_t cell_index);
 
   struct cell_context final : public ue_cell_scheduler, public uci_indication_timeout_notifier {
     ue_scheduler_impl& parent;

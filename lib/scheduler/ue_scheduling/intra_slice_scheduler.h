@@ -39,6 +39,18 @@ public:
   /// Schedule UL grants for a given slice candidate.
   void ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy);
 
+  /// \brief Collect UL grants for a given slice candidate without selecting VRBs for newTx grants.
+  ///
+  /// Returns true when a newTx batch is pending finalization. When true, the caller must call
+  /// finalize_ul_sched() before collecting another batch or advancing to the next slot.
+  bool collect_ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy);
+
+  /// Finalize the pending UL newTx batch using the default VRB recommendation heuristic.
+  void finalize_ul_sched();
+
+  /// Returns true when UL newTx builders are waiting at the multi-cell synchronization point.
+  bool has_pending_ul_sched() const { return not pending_ul_newtxs.empty(); }
+
 private:
   /// Context for a given slice scheduling.
   struct slice_ue_group_scheduler {
@@ -90,9 +102,11 @@ private:
                                         scheduler_policy&       dl_policy,
                                         unsigned                max_ue_grants_to_alloc);
 
-  unsigned schedule_ul_newtx_candidates(ul_ran_slice_candidate& slice,
-                                        scheduler_policy&       ul_policy,
-                                        unsigned                max_ue_grants_to_alloc);
+  bool collect_ul_newtx_candidates(ul_ran_slice_candidate& slice,
+                                   scheduler_policy&       ul_policy,
+                                   unsigned                max_ue_grants_to_alloc);
+
+  unsigned finalize_ul_newtx_candidates();
 
   unsigned max_pdschs_to_alloc(const dl_ran_slice_candidate& slice) const;
 
@@ -141,6 +155,11 @@ private:
   // Grants being built for the current slice.
   std::vector<ue_cell_grid_allocator::dl_newtx_grant_builder> pending_dl_newtxs;
   std::vector<ue_cell_grid_allocator::ul_newtx_grant_builder> pending_ul_newtxs;
+
+  // Context retained while UL newTx builders wait at the multi-cell synchronization point.
+  std::optional<ul_ran_slice_candidate> pending_ul_slice;
+  scheduler_policy*                     pending_ul_policy = nullptr;
+  unsigned                              pending_ul_rbs_to_alloc = 0;
 };
 
 } // namespace ocudu

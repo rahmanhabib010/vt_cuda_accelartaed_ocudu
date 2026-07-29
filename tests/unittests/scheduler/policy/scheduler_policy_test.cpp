@@ -67,7 +67,7 @@ protected:
 
   ~base_scheduler_policy_test() { ocudulog::flush(); }
 
-  void run_slot()
+  void prepare_slot()
   {
     logger.set_context(next_slot.sfn(), next_slot.slot_index());
 
@@ -78,6 +78,11 @@ protected:
     ues.slot_indication(next_slot);
     intra_slice_sched.slot_indication(next_slot);
     slice_sched.slot_indication(next_slot, res_grid);
+  }
+
+  void run_slot()
+  {
+    prepare_slot();
 
     if (cell_cfg.is_dl_enabled(next_slot)) {
       while (auto dl_slice_candidate = slice_sched.get_next_dl_candidate()) {
@@ -289,6 +294,45 @@ TEST_P(scheduler_policy_test, scheduler_allocates_more_than_one_ue_in_case_their
     ASSERT_FALSE(pusch_res_grid.result.ul.puschs[0].pusch_cfg.rbs.type1().overlaps(
         pusch_res_grid.result.ul.puschs[1].pusch_cfg.rbs.type1()));
   }
+}
+
+TEST_P(scheduler_policy_test, ul_newtx_vrb_selection_can_be_deferred_until_after_candidate_collection)
+{
+  lcg_id_t  lcg_id = uint_to_lcg_id(2);
+  const ue& u      = add_ue(make_ue_create_req(to_du_ue_index(0), to_rnti(0x4601), {uint_to_lcid(5)}, lcg_id));
+  notify_ul_bsr(u.ue_index, lcg_id, 1000);
+
+  // Slot zero is DL-enabled in the default TDD pattern and can carry the UL PDCCH.
+  next_slot = slot_point{cell_cfg.scs_common(), 0};
+  prepare_slot();
+
+  bool batch_collected = false;
+  while (auto ul_slice_candidate = slice_sched.get_next_ul_candidate()) {
+    scheduler_policy& policy = slice_sched.get_policy(ul_slice_candidate->id());
+    if (intra_slice_sched.collect_ul_sched(ul_slice_candidate.value(), policy)) {
+      batch_collected = true;
+      break;
+    }
+  }
+
+  ASSERT_TRUE(batch_collected);
+  ASSERT_TRUE(intra_slice_sched.has_pending_ul_sched());
+  ASSERT_EQ(res_grid[0].result.dl.ul_pdcchs.size(), 1);
+
+  unsigned pusch_delay = 0;
+  for (; pusch_delay <= res_grid.max_ul_slot_alloc_delay; ++pusch_delay) {
+    if (not res_grid[pusch_delay].result.ul.puschs.empty()) {
+      break;
+    }
+  }
+  ASSERT_LE(pusch_delay, res_grid.max_ul_slot_alloc_delay);
+  ASSERT_EQ(res_grid[pusch_delay].result.ul.puschs.size(), 1);
+  ASSERT_TRUE(res_grid[pusch_delay].result.ul.puschs[0].pusch_cfg.rbs.empty());
+
+  intra_slice_sched.finalize_ul_sched();
+
+  ASSERT_FALSE(intra_slice_sched.has_pending_ul_sched());
+  ASSERT_FALSE(res_grid[pusch_delay].result.ul.puschs[0].pusch_cfg.rbs.empty());
 }
 
 TEST_P(scheduler_policy_test, scheduler_allocates_more_than_one_ue_in_case_their_dl_buffer_state_is_low)

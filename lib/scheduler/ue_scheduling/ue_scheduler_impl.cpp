@@ -66,7 +66,7 @@ void ue_scheduler_impl::do_rem_cell(du_cell_index_t cell_index)
   cells.erase(cell_index);
 }
 
-void ue_scheduler_impl::run_sched_strategy(du_cell_index_t cell_index)
+void ue_scheduler_impl::run_dl_sched_strategy(du_cell_index_t cell_index)
 {
   auto& cell = cells[cell_index];
 
@@ -76,11 +76,19 @@ void ue_scheduler_impl::run_sched_strategy(du_cell_index_t cell_index)
     scheduler_policy& policy = cell.slice_sched.get_policy(dl_slice_candidate->id());
     cell.intra_slice_sched.dl_sched(dl_slice_candidate.value(), policy);
   }
+}
+
+bool ue_scheduler_impl::collect_next_ul_sched_batch(du_cell_index_t cell_index)
+{
+  auto& cell = cells[cell_index];
 
   while (auto ul_slice_candidate = cell.slice_sched.get_next_ul_candidate()) {
     scheduler_policy& policy = cell.slice_sched.get_policy(ul_slice_candidate->id());
-    cell.intra_slice_sched.ul_sched(ul_slice_candidate.value(), policy);
+    if (cell.intra_slice_sched.collect_ul_sched(ul_slice_candidate.value(), policy)) {
+      return true;
+    }
   }
+  return false;
 }
 
 [[maybe_unused]] static bool puxch_grant_sanitizer(cell_resource_allocator& cell_alloc, ocudulog::basic_logger& logger)
@@ -124,9 +132,9 @@ void ue_scheduler_impl::run_slot_impl(slot_point sl_tx)
   }
   last_sl_ind = sl_tx;
 
+  // Prepare every cell before running the scheduling strategies. In particular, periodic UCI and SRS resources must
+  // be present before feasible UL newTx candidates are collected.
   for (auto& group_cell : cells) {
-    du_cell_index_t cell_index = group_cell.cell_res_alloc->cfg.cell_index;
-
     // Process any pending events that are directed at UEs.
     group_cell.ev_mng->run_slot(sl_tx);
 
@@ -150,10 +158,37 @@ void ue_scheduler_impl::run_slot_impl(slot_point sl_tx)
 
     // Inject synthetic BSR for triggered UL grants due this slot.
     group_cell.trig_ul_sched.run_slot(sl_tx);
+  }
 
-    // Run slice scheduler policies.
-    run_sched_strategy(cell_index);
+  // Schedule DL first for every cell. DL must precede UL so that DCI format 0_1 observes the correct DAI.
+  for (auto& group_cell : cells) {
+    run_dl_sched_strategy(group_cell.cell_res_alloc->cfg.cell_index);
+  }
 
+  // Advance UL scheduling in synchronized rounds. Each active cell collects at most one feasible newTx builder batch
+  // and then yields. Only after all cells have either yielded or exhausted their UL work can any cell derive its VRBs.
+  while (true) {
+    bool any_pending_ul_batch = false;
+    for (auto& group_cell : cells) {
+      if (collect_next_ul_sched_batch(group_cell.cell_res_alloc->cfg.cell_index)) {
+        any_pending_ul_batch = true;
+      }
+    }
+
+    if (not any_pending_ul_batch) {
+      break;
+    }
+
+    // Multi-cell AI input synchronization point. Aligned Top-K observations can be extracted from each pending batch
+    // here. Until a MARL policy is connected, finalization deliberately retains the existing recommendation heuristic.
+    for (auto& group_cell : cells) {
+      if (group_cell.intra_slice_sched.has_pending_ul_sched()) {
+        group_cell.intra_slice_sched.finalize_ul_sched();
+      }
+    }
+  }
+
+  for (auto& group_cell : cells) {
     // The post processing is done for DL and UL slots.
     group_cell.intra_slice_sched.post_process_results();
 

@@ -151,6 +151,8 @@ intra_slice_scheduler::intra_slice_scheduler(const scheduler_ue_expert_config& e
 
 void intra_slice_scheduler::slot_indication(slot_point sl_tx)
 {
+  ocudu_sanity_check(not has_pending_ul_sched(), "UL newTx grants were not finalized before advancing the slot");
+
   pdcch_slot = sl_tx;
   // Reset slots to ensure used RB bitmaps are updated when scheduling the next slot, as allocations could have been
   // made by other scheduler components in the meantime (e.g., fallback scheduler).
@@ -196,9 +198,17 @@ void intra_slice_scheduler::dl_sched(dl_ran_slice_candidate slice, scheduler_pol
 
 void intra_slice_scheduler::ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy)
 {
+  if (collect_ul_sched(std::move(slice), ul_policy)) {
+    finalize_ul_sched();
+  }
+}
+
+bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy)
+{
+  ocudu_sanity_check(not has_pending_ul_sched(), "A UL newTx batch is already pending finalization");
   ocudu_sanity_check(slice.remaining_rbs() > 0, "Invalid slice slice");
   if (slice.get_slice_ues().empty()) {
-    return;
+    return false;
   }
 
   if (slice.get_slot_tx() != pusch_slot) {
@@ -209,18 +219,25 @@ void intra_slice_scheduler::ul_sched(ul_ran_slice_candidate slice, scheduler_pol
   // Determine max number of UE grants that can be scheduled in this slot.
   unsigned puschs_to_alloc = max_puschs_to_alloc(slice);
   if (puschs_to_alloc == 0) {
-    return;
+    return false;
   }
 
   // Schedule reTxs.
   unsigned nof_retxs_alloc = schedule_ul_retx_candidates(slice, puschs_to_alloc);
   puschs_to_alloc -= std::min(puschs_to_alloc, nof_retxs_alloc);
   if (puschs_to_alloc == 0) {
-    return;
+    return false;
   }
 
-  // Allocate UE newTx grants.
-  schedule_ul_newtx_candidates(slice, ul_policy, puschs_to_alloc);
+  // Allocate the control-plane resources for UE newTx grants, but defer VRB selection until all cells reach the
+  // synchronization point.
+  return collect_ul_newtx_candidates(slice, ul_policy, puschs_to_alloc);
+}
+
+void intra_slice_scheduler::finalize_ul_sched()
+{
+  ocudu_sanity_check(has_pending_ul_sched(), "No UL newTx batch is pending finalization");
+  finalize_ul_newtx_candidates();
 }
 
 /// \brief Helper function that returns a pair with the remaining number of RBs to allocate in this slice scheduling
@@ -570,21 +587,21 @@ unsigned intra_slice_scheduler::schedule_dl_newtx_candidates(dl_ran_slice_candid
   return alloc_count;
 }
 
-unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candidate& slice,
-                                                             scheduler_policy&       ul_policy,
-                                                             unsigned                max_ue_grants_to_alloc)
+bool intra_slice_scheduler::collect_ul_newtx_candidates(ul_ran_slice_candidate& slice,
+                                                        scheduler_policy&       ul_policy,
+                                                        unsigned                max_ue_grants_to_alloc)
 {
   // Prepare candidate list.
   prepare_newtx_ul_candidates(slice, ul_policy);
   if (newtx_candidates.empty()) {
-    return 0;
+    return false;
   }
 
   // Recompute max number of UE grants that can be scheduled in this slot and the number of RBs per grant.
   auto [rbs_to_alloc, expected_rbs_per_grant] =
       get_max_grants_and_rb_grant_size(newtx_candidates, cell_alloc, slice, used_ul_vrbs, max_ue_grants_to_alloc);
   if (expected_rbs_per_grant == 0) {
-    return 0;
+    return false;
   }
 
   // Stage 1: Pre-select UEs with the highest priority and reserve control-plane space for their UL grants.
@@ -622,20 +639,35 @@ unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candid
   }
 
   if (pending_ul_newtxs.empty()) {
-    return 0;
+    return false;
   }
 
+  pending_ul_slice.emplace(slice);
+  pending_ul_policy       = &ul_policy;
+  pending_ul_rbs_to_alloc = rbs_to_alloc;
+  return true;
+}
+
+unsigned intra_slice_scheduler::finalize_ul_newtx_candidates()
+{
+  ocudu_sanity_check(has_pending_ul_sched(), "No UL newTx candidates to finalize");
+  ocudu_sanity_check(pending_ul_slice.has_value() and pending_ul_policy != nullptr,
+                     "Missing context for pending UL newTx candidates");
+
+  ul_ran_slice_candidate& slice     = pending_ul_slice.value();
+  scheduler_policy&       ul_policy = *pending_ul_policy;
+
   // Stage 2: Derive CRBs, MCS, and number of layers for each grant.
-  expected_rbs_per_grant = rbs_to_alloc / pending_ul_newtxs.size();
-  rb_count               = 0;
-  int rbs_missing        = 0;
+  unsigned expected_rbs_per_grant = pending_ul_rbs_to_alloc / pending_ul_newtxs.size();
+  unsigned rb_count               = 0;
+  int      rbs_missing            = 0;
   for (unsigned alloc_count = 0, nof_grants = pending_ul_newtxs.size(); alloc_count != nof_grants; ++alloc_count) {
     auto& grant_builder = pending_ul_newtxs[alloc_count];
     // Determine the max grant size in RBs for this grant.
     int max_grant_size;
     if (alloc_count == nof_grants - 1) {
       // For the last UE, we also account for the remaining RBs.
-      max_grant_size = rbs_to_alloc - rb_count;
+      max_grant_size = pending_ul_rbs_to_alloc - rb_count;
     } else {
       max_grant_size = expected_rbs_per_grant + rbs_missing;
     }
@@ -673,6 +705,10 @@ unsigned intra_slice_scheduler::schedule_ul_newtx_candidates(ul_ran_slice_candid
   // Update policy with allocation results.
   const auto& puschs = cell_alloc[pusch_slot].result.ul.puschs;
   ul_policy.save_ul_newtx_grants(span<const ul_sched_info>(puschs.end() - alloc_count, puschs.end()));
+
+  pending_ul_slice.reset();
+  pending_ul_policy       = nullptr;
+  pending_ul_rbs_to_alloc = 0;
 
   return alloc_count;
 }
