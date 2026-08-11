@@ -42,15 +42,17 @@ void to_json(
 {
   json["rb_start"] =
       range.rb_start;
-
+/*
   json["rb_length"] =
       range.rb_length;
+*/
 
   // The stop index is exclusive.
   json["rb_stop"] =
       range.rb_start + range.rb_length;
 }
 
+/*
 void to_json(
     nlohmann::json& json,
     const scheduler_pusch_allocation& allocation)
@@ -95,12 +97,6 @@ void to_json(
         allocation.second_hop_rb_start.value();
   }
 
-  /*
-   * Convenience fields for Type 1.
-   *
-   * Type 1 has exactly one contiguous PRB range, so expose
-   * rb_start and rb_length directly as well.
-   */
   if (allocation.allocation_type == 1 &&
       allocation.prb_ranges.size() == 1) {
     json["rb_start"] =
@@ -114,10 +110,39 @@ void to_json(
         allocation.prb_ranges.front().rb_length;
   }
 }
+
+*/
+
+
+void to_json(
+    nlohmann::json& json,
+    const scheduler_pusch_allocation& allocation)
+{
+  json["hyper_sfn"] =
+      allocation.slot.hyper_sfn();
+
+  json["sfn"] =
+      allocation.slot.sfn();
+
+  json["slot_index"] =
+      allocation.slot.slot_index();
+
+  json["allocation_type"] =
+      allocation.allocation_type;
+
+  json["bwp_size_prbs"] =
+      allocation.bwp_size_prbs;
+
+  json["nof_prbs"] =
+      allocation.nof_prbs;
+
+  json["prb_ranges"] =
+      allocation.prb_ranges;
+}
 //habib added
 
 
-
+/*
 void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
 {
   json["ue"]   = metrics.ue_index;
@@ -188,7 +213,82 @@ void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
   json["max_sr_to_pusch_delay"] =
       metrics.max_sr_to_pusch_delay_ms.has_value() ? metrics.max_sr_to_pusch_delay_ms : 0.0f;
 }
+*/
+void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
+{
+  json["ue"]   = metrics.ue_index;
+  json["rnti"] = metrics.rnti;
 
+  json["cqi"] =
+      (metrics.cqi_stats.get_nof_observations() > 0)
+          ? static_cast<uint8_t>(
+                std::round(metrics.cqi_stats.get_mean()))
+          : -1;
+
+  json["ul_ri"] =
+      metrics.ul_ri_stats.get_nof_observations() > 0
+          ? metrics.ul_ri_stats.get_mean()
+          : 1;
+
+  json["dl_mcs"]   = metrics.dl_mcs.value();
+  json["dl_brate"] = metrics.dl_brate_kbps * 1e3;
+  json["dl_bs"]    = metrics.dl_bs;
+
+  if (!std::isnan(metrics.pusch_snr_db) &&
+      !iszero(metrics.pusch_snr_db)) {
+    json["pusch_snr_db"] =
+        std::clamp(metrics.pusch_snr_db, -99.9f, 99.9f);
+  }
+
+  if (!std::isnan(metrics.pusch_rsrp_db) &&
+      !iszero(metrics.pusch_rsrp_db)) {
+    json["pusch_rsrp_db"] =
+        std::clamp(metrics.pusch_rsrp_db, -99.9f, 0.0f);
+  }
+
+  json["ta_ns"] =
+      (metrics.ta_stats.get_nof_observations() > 0)
+          ? std::optional{
+                metrics.ta_stats.get_mean() * 1e9}
+          : 0.0f;
+
+  json["pusch_ta_ns"] =
+      (metrics.pusch_ta_stats.get_nof_observations() > 0)
+          ? std::optional{
+                metrics.pusch_ta_stats.get_mean() * 1e9}
+          : 0.0f;
+
+  json["srs_ta_ns"] =
+      (metrics.srs_ta_stats.get_nof_observations() > 0)
+          ? std::optional{
+                metrics.srs_ta_stats.get_mean() * 1e9}
+          : 0.0f;
+
+  json["bsr"] = metrics.bsr;
+
+  json["avg_ce_delay"] =
+      metrics.avg_ce_delay_ms.has_value()
+          ? metrics.avg_ce_delay_ms
+          : 0.0f;
+
+  json["avg_crc_delay"] =
+      metrics.avg_crc_delay_ms.has_value()
+          ? metrics.avg_crc_delay_ms
+          : 0.0f;
+
+  json["tot_pusch_prbs_used"] =
+      metrics.tot_pusch_prbs_used;
+
+  json["pusch_allocations"] =
+      metrics.pusch_allocations;
+
+  json["ul_mcs"]     = metrics.ul_mcs.value();
+  json["ul_brate"]   = metrics.ul_brate_kbps * 1e3;
+  json["ul_nof_ok"]  = metrics.ul_nof_ok;
+  json["ul_nof_nok"] = metrics.ul_nof_nok;
+}
+
+/*
 void to_json(nlohmann::json& json, const scheduler_cell_metrics& metrics)
 {
   // Cell metrics.
@@ -218,6 +318,24 @@ void to_json(nlohmann::json& json, const scheduler_cell_metrics& metrics)
   }
   if (!metrics.events.empty()) {
     json["event_list"] = metrics.events;
+  }
+}
+*/
+
+void to_json(
+    nlohmann::json& json,
+    const scheduler_cell_metrics& metrics)
+{
+  auto& cell_json = json["cell_metrics"];
+
+  // Keep PCI here so the Python collector can identify the cell.
+  cell_json["pci"] = metrics.pci;
+
+  cell_json["average_latency"] =
+      metrics.average_decision_latency.count();
+
+  if (!metrics.ue_metrics.empty()) {
+    json["ue_list"] = metrics.ue_metrics;
   }
 }
 

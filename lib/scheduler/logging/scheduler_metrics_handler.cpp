@@ -122,6 +122,7 @@ void cell_metrics_handler::handle_ue_deletion(du_ue_index_t ue_index)
   }
 }
 
+/*
 void cell_metrics_handler::handle_rach_indication(const rach_indication_message& msg, slot_point sl_tx)
 {
   if (not enabled()) {
@@ -146,6 +147,24 @@ void cell_metrics_handler::handle_msg3_crc_indication(const ul_crc_pdu_indicatio
     data.nof_msg3_nok++;
   }
 }
+*/
+// habib added
+void cell_metrics_handler::handle_rach_indication(
+    const rach_indication_message& msg,
+    slot_point                     sl_tx)
+{
+  // Reduced metrics mode: PRACH metrics are not collected.
+  (void)msg;
+  (void)sl_tx;
+}
+
+void cell_metrics_handler::handle_msg3_crc_indication(
+    const ul_crc_pdu_indication& crc_pdu)
+{
+  // Reduced metrics mode: Msg3 metrics are not collected.
+  (void)crc_pdu;
+}
+// habib added
 
 void cell_metrics_handler::handle_crc_indication(slot_point                   sl_rx,
                                                  const ul_crc_pdu_indication& crc_pdu,
@@ -174,8 +193,8 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
       u.data.pusch_ta.update(crc_pdu.time_advance_offset.value().to_seconds());
     }
     u.data.sum_crc_delay_slots += last_slot_tx.without_hyper_sfn() - sl_rx;
-    u.data.max_crc_delay_slots =
-        std::max(static_cast<unsigned>(last_slot_tx.without_hyper_sfn() - sl_rx), u.data.max_crc_delay_slots);
+    //u.data.max_crc_delay_slots =
+    //    std::max(static_cast<unsigned>(last_slot_tx.without_hyper_sfn() - sl_rx), u.data.max_crc_delay_slots);
   }
 }
 
@@ -194,11 +213,25 @@ void cell_metrics_handler::handle_srs_indication(const srs_indication::srs_indic
   }
 }
 
+/*
 void cell_metrics_handler::handle_pucch_sinr(ue_metric_context& u, float sinr)
 {
   ++u.data.nof_pucch_snr_reports;
   u.data.sum_pucch_snrs += sinr;
 }
+*/
+
+// habib added
+void cell_metrics_handler::handle_pucch_sinr(
+    ue_metric_context& u,
+    float              sinr)
+{
+  // Reduced metrics mode: PUCCH SINR is not collected.
+  (void)u;
+  (void)sinr;
+}
+// habib added
+
 
 void cell_metrics_handler::handle_csi_report(ue_metric_context& u, const csi_report_data& csi)
 {
@@ -206,9 +239,9 @@ void cell_metrics_handler::handle_csi_report(ue_metric_context& u, const csi_rep
   if (csi.first_tb_wideband_cqi.has_value()) {
     u.data.cqi.update(csi.first_tb_wideband_cqi->value());
   }
-  if (csi.ri.has_value()) {
-    u.data.dl_ri.update(csi.ri->value());
-  }
+  //if (csi.ri.has_value()) {
+  //  u.data.dl_ri.update(csi.ri->value());
+  //}
 }
 
 void cell_metrics_handler::handle_uci_with_harq_ack(du_ue_index_t ue_index, slot_point sl_rx, bool pucch)
@@ -390,15 +423,15 @@ void cell_metrics_handler::report_metrics()
   // 0.9 + 0.1 - 1.0 == 0.
   next_report->slot                  = last_slot_tx.without_hyper_sfn() + 1 - data.nof_slots;
   next_report->nof_slots             = data.nof_slots;
-  next_report->nof_error_indications = data.error_indication_counter;
+  //next_report->nof_error_indications = data.error_indication_counter;
   next_report->average_decision_latency =
       next_report->nof_slots > 0 ? data.decision_latency_sum / next_report->nof_slots : std::chrono::microseconds{0};
-  next_report->max_decision_latency      = data.max_decision_latency;
-  next_report->max_decision_latency_slot = data.max_decision_latency_slot;
-  next_report->latency_histogram         = data.decision_latency_hist;
+  //next_report->max_decision_latency      = data.max_decision_latency;
+  //next_report->max_decision_latency_slot = data.max_decision_latency_slot;
+  //next_report->latency_histogram         = data.decision_latency_hist;
   next_report->nof_prbs                  = cell_cfg.nof_dl_prbs; // TODO: to be removed from the report.
-  next_report->nof_dl_slots              = data.nof_dl_slots;
-  next_report->nof_ul_slots              = data.nof_ul_slots;
+  //next_report->nof_dl_slots              = data.nof_dl_slots;
+  //next_report->nof_ul_slots              = data.nof_ul_slots;
   next_report->nof_prach_preambles       = data.nof_prach_preambles;
   next_report->dl_grants_count           = data.nof_ue_pdsch_grants;
   next_report->ul_grants_count           = data.nof_ue_pusch_grants;
@@ -534,7 +567,9 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
     u.data.last_pusch_slot = last_slot_tx.without_hyper_sfn();
   }
 */
-  //habib added
+
+/*
+ //habib added - v1
   data.nof_ue_pusch_grants += slot_result.ul.puschs.size();
 
   for (const ul_sched_info& ul_grant : slot_result.ul.puschs) {
@@ -572,14 +607,14 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
     }
 
     if (ul_grant.pusch_cfg.rbs.is_type1()) {
-      /*
-      * Resource-allocation Type 1:
-      *
-      * One contiguous VRB range. For uplink Type 1, OCUDU
-      * represents contiguous non-interleaved VRBs, so these
-      * indices correspond directly to PRB positions within
-      * the PUSCH BWP.
-      */
+      
+     // * Resource-allocation Type 1:
+     // *
+     // * One contiguous VRB range. For uplink Type 1, OCUDU
+     // * represents contiguous non-interleaved VRBs, so these
+     // * indices correspond directly to PRB positions within
+     // * the PUSCH BWP.
+      
       allocation.allocation_type = 1;
 
       const vrb_interval& vrbs =
@@ -595,13 +630,13 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
           vrbs.length();
 
     } else {
-      /*
-      * Resource-allocation Type 0:
-      *
-      * The scheduler stores an RBG bitmap. Convert the selected
-      * RBGs to the corresponding PRB bitmap, then store the
-      * resulting contiguous PRB ranges.
-      */
+      
+    //  * Resource-allocation Type 0:
+    //  *
+    //  * The scheduler stores an RBG bitmap. Convert the selected
+    //  * RBGs to the corresponding PRB bitmap, then store the
+    //  * resulting contiguous PRB ranges.
+    
       allocation.allocation_type = 0;
 
       const rbg_bitmap& rbgs =
@@ -695,8 +730,148 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
     u.data.last_pusch_slot =
         last_slot_tx.without_hyper_sfn();
   }
-  //habib added
+  //habib added - v1
+*/
+ 
+// habib added - v2
 
+// habib added - reduced PUSCH metrics collection.
+//
+// Only collect the PUSCH information required by the reduced
+// scheduler metrics output:
+//   - slot identity
+//   - allocation type
+//   - BWP size
+//   - allocated PRB ranges
+//   - number of allocated PRBs
+//   - aggregate UE PUSCH PRB usage
+//   - UL MCS
+
+for (const ul_sched_info& ul_grant : slot_result.ul.puschs) {
+  auto it = rnti_to_ue_index_lookup.find(ul_grant.pusch_cfg.rnti);
+
+  if (it == rnti_to_ue_index_lookup.end()) {
+    // The allocation does not correspond to a currently tracked UE.
+    continue;
+  }
+
+  ue_metric_context& u = ues[it->second];
+
+  scheduler_pusch_allocation allocation{};
+
+  // ------------------------------------------------------------------
+  // Slot identity.
+  // ------------------------------------------------------------------
+  allocation.slot = sl_tx;
+
+  // ------------------------------------------------------------------
+  // PUSCH BWP information.
+  //
+  // We only expose the BWP size. bwp_crbs is still needed internally
+  // for converting Type-0 RBG allocations into PRB positions.
+  // ------------------------------------------------------------------
+  const crb_interval bwp_crbs =
+      ul_grant.pusch_cfg.bwp_cfg->crbs;
+
+  allocation.bwp_size_prbs =
+      bwp_crbs.length();
+
+  // ------------------------------------------------------------------
+  // Frequency-domain resource allocation.
+  // ------------------------------------------------------------------
+  if (ul_grant.pusch_cfg.rbs.is_type1()) {
+    /*
+     * Resource-allocation Type 1.
+     *
+     * Type 1 contains one contiguous VRB interval.
+     * For this PUSCH allocation the VRB positions correspond to
+     * PRB positions relative to the active PUSCH BWP.
+     */
+    allocation.allocation_type = 1;
+
+    const vrb_interval& vrbs =
+        ul_grant.pusch_cfg.rbs.type1();
+
+    allocation.prb_ranges.push_back(
+        scheduler_prb_range{
+            static_cast<unsigned>(vrbs.start()),
+            static_cast<unsigned>(vrbs.length())
+        });
+
+    allocation.nof_prbs =
+        static_cast<unsigned>(vrbs.length());
+
+  } else {
+    /*
+     * Resource-allocation Type 0.
+     *
+     * The scheduler represents the allocation as an RBG bitmap.
+     * Convert the selected RBGs into a PRB bitmap and then convert
+     * that bitmap into one or more contiguous PRB ranges.
+     */
+    allocation.allocation_type = 0;
+
+    const rbg_bitmap& rbgs =
+        ul_grant.pusch_cfg.rbs.type0();
+
+    const nominal_rbg_size nominal_rbg =
+        get_nominal_rbg_size(
+            allocation.bwp_size_prbs,
+            true);
+
+    const prb_bitmap allocated_prbs =
+        convert_rbgs_to_prbs(
+            rbgs,
+            bwp_crbs,
+            nominal_rbg);
+
+    // Convert the allocated PRB bitmap into contiguous ranges.
+    for_each_interval(
+        allocated_prbs,
+        [&allocation](size_t start, size_t stop) {
+          allocation.prb_ranges.push_back(
+              scheduler_prb_range{
+                  static_cast<unsigned>(start),
+                  static_cast<unsigned>(stop - start)
+              });
+        });
+
+    allocation.nof_prbs =
+        static_cast<unsigned>(allocated_prbs.count());
+  }
+
+  // ------------------------------------------------------------------
+  // Aggregate UE-level PUSCH PRB usage.
+  //
+  // Required for:
+  //   tot_pusch_prbs_used
+  // ------------------------------------------------------------------
+  u.data.tot_ul_prbs_used +=
+      allocation.nof_prbs;
+
+  // ------------------------------------------------------------------
+  // Store this detailed PUSCH grant.
+  //
+  // Required for:
+  //   pusch_allocations[]
+  // ------------------------------------------------------------------
+  u.data.pusch_allocations.push_back(
+      std::move(allocation));
+
+  // ------------------------------------------------------------------
+  // UL MCS accumulation.
+  //
+  // compute_report() uses this together with nof_puschs to calculate
+  // the reported UL MCS.
+  // ------------------------------------------------------------------
+  u.data.ul_mcs +=
+      ul_grant.pusch_cfg.mcs_index.value();
+
+  ++u.data.nof_puschs;
+}
+
+// habib added - v2
+/*
     // PUCCH resource usage.
     prb_bitmap pucch_prbs(cell_cfg.nof_ul_prbs);
     for (const auto& pucch : slot_result.ul.pucchs) {
@@ -708,13 +883,16 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
       }
     }
   data.pucch_rbs_used += pucch_prbs.count();
+*/
+
 
   // Count DL and UL slots.
-  data.nof_dl_slots += slot_result.dl.nof_dl_symbols > 0;
-  data.nof_ul_slots += slot_result.ul.nof_ul_symbols > 0;
+  //data.nof_dl_slots += slot_result.dl.nof_dl_symbols > 0;
+  //data.nof_ul_slots += slot_result.ul.nof_ul_symbols > 0;
 
   // Process latency.
   data.decision_latency_sum += slot_decision_latency;
+/*
   if (data.max_decision_latency < slot_decision_latency) {
     data.max_decision_latency      = slot_decision_latency;
     data.max_decision_latency_slot = last_slot_tx.without_hyper_sfn();
@@ -723,6 +901,8 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
   bin_idx          = std::min(bin_idx, scheduler_cell_metrics::latency_hist_bins - 1);
   ++data.decision_latency_hist[bin_idx];
 
+*/
+  
   // Failed allocation attempts.
   data.nof_failed_pdcch_allocs += slot_result.failed_attempts.pdcch;
   data.nof_failed_uci_allocs += slot_result.failed_attempts.uci;
