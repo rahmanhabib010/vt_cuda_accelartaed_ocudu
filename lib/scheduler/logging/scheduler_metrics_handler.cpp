@@ -11,6 +11,12 @@
 #include "ocudu/scheduler/result/sched_result.h"
 #include "ocudu/scheduler/scheduler_rach_handler.h"
 
+// habib added
+#include "ocudu/ran/resource_allocation/rb_bitmap.h"
+#include "ocudu/scheduler/result/resource_block_group.h"
+#include <utility>
+// habib added
+
 using namespace ocudu;
 
 namespace {
@@ -488,7 +494,7 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
     }
     u.data.last_pdsch_slot = last_slot_tx.without_hyper_sfn();
   }
-
+/*
   data.nof_ue_pusch_grants += slot_result.ul.puschs.size();
   for (const ul_sched_info& ul_grant : slot_result.ul.puschs) {
     auto it = rnti_to_ue_index_lookup.find(ul_grant.pusch_cfg.rnti);
@@ -527,17 +533,180 @@ void cell_metrics_handler::handle_slot_result(slot_point_extended       sl_tx,
     }
     u.data.last_pusch_slot = last_slot_tx.without_hyper_sfn();
   }
+*/
+  //habib added
+  data.nof_ue_pusch_grants += slot_result.ul.puschs.size();
 
-  // PUCCH resource usage.
-  prb_bitmap pucch_prbs(cell_cfg.nof_ul_prbs);
-  for (const auto& pucch : slot_result.ul.pucchs) {
-    // Mark the PRBs used by this PUCCH.
-    const prb_interval prbs = pucch.grant_prbs();
-    pucch_prbs.fill(prbs.start(), prbs.stop());
-    if (pucch.res->second_hop_prb.has_value()) {
-      pucch_prbs.fill(*pucch.res->second_hop_prb, *pucch.res->second_hop_prb + prbs.length());
+  for (const ul_sched_info& ul_grant : slot_result.ul.puschs) {
+    auto it = rnti_to_ue_index_lookup.find(ul_grant.pusch_cfg.rnti);
+
+    if (it == rnti_to_ue_index_lookup.end()) {
+      // The allocation does not correspond to a currently tracked UE.
+      continue;
     }
+
+    ue_metric_context& u = ues[it->second];
+
+    scheduler_pusch_allocation allocation{};
+
+    // Store the radio-slot identity.
+    allocation.slot = sl_tx;
+
+    // Store PUSCH BWP information.
+    const crb_interval bwp_crbs =
+        ul_grant.pusch_cfg.bwp_cfg->crbs;
+
+    allocation.bwp_start_crb =
+        bwp_crbs.start();
+
+    allocation.bwp_size_prbs =
+        bwp_crbs.length();
+
+    // Store frequency-hopping information.
+    allocation.intra_slot_freq_hopping =
+        ul_grant.pusch_cfg.intra_slot_freq_hopping;
+
+    if (allocation.intra_slot_freq_hopping) {
+      allocation.second_hop_rb_start =
+          ul_grant.pusch_cfg.pusch_second_hop_prb;
+    }
+
+    if (ul_grant.pusch_cfg.rbs.is_type1()) {
+      /*
+      * Resource-allocation Type 1:
+      *
+      * One contiguous VRB range. For uplink Type 1, OCUDU
+      * represents contiguous non-interleaved VRBs, so these
+      * indices correspond directly to PRB positions within
+      * the PUSCH BWP.
+      */
+      allocation.allocation_type = 1;
+
+      const vrb_interval& vrbs =
+          ul_grant.pusch_cfg.rbs.type1();
+
+      allocation.prb_ranges.push_back(
+          scheduler_prb_range{
+              static_cast<unsigned>(vrbs.start()),
+              static_cast<unsigned>(vrbs.length())
+          });
+
+      allocation.nof_prbs =
+          vrbs.length();
+
+    } else {
+      /*
+      * Resource-allocation Type 0:
+      *
+      * The scheduler stores an RBG bitmap. Convert the selected
+      * RBGs to the corresponding PRB bitmap, then store the
+      * resulting contiguous PRB ranges.
+      */
+      allocation.allocation_type = 0;
+
+      const rbg_bitmap& rbgs =
+          ul_grant.pusch_cfg.rbs.type0();
+
+      // Preserve the selected RBG indices.
+      for (size_t rbg_index : rbgs.get_bit_positions()) {
+        allocation.rbg_indices.push_back(
+            static_cast<unsigned>(rbg_index));
+      }
+
+      const nominal_rbg_size nominal_rbg =
+          get_nominal_rbg_size(
+              allocation.bwp_size_prbs,
+              true);
+
+      const prb_bitmap allocated_prbs =
+          convert_rbgs_to_prbs(
+              rbgs,
+              bwp_crbs,
+              nominal_rbg);
+
+      // Convert the PRB bitmap into one or more contiguous ranges.
+      for_each_interval(
+          allocated_prbs,
+          [&allocation](size_t start, size_t stop) {
+            allocation.prb_ranges.push_back(
+                scheduler_prb_range{
+                    static_cast<unsigned>(start),
+                    static_cast<unsigned>(stop - start)
+                });
+          });
+
+      allocation.nof_prbs =
+          allocated_prbs.count();
+    }
+
+    // Existing aggregate UE-level PRB counter.
+    u.data.tot_ul_prbs_used +=
+        allocation.nof_prbs;
+
+    // Existing aggregate cell-level TDD slot-index counter.
+    if (not ul_prbs_used_per_tdd_slot_idx.empty()) {
+      const unsigned tdd_slot_index =
+          last_slot_tx.count() %
+          ul_prbs_used_per_tdd_slot_idx.size();
+
+      ul_prbs_used_per_tdd_slot_idx[tdd_slot_index] +=
+          allocation.nof_prbs;
+    }
+
+    // Store the detailed grant for this UE.
+    u.data.pusch_allocations.push_back(
+        std::move(allocation));
+
+    // Keep the remaining existing UE metric updates.
+    u.data.ul_mcs +=
+        ul_grant.pusch_cfg.mcs_index.value();
+
+    u.last_ul_olla =
+        ul_grant.context.olla_offset;
+
+    if (u.data.last_sr_slot.valid()) {
+      unsigned sr_to_pusch_delay =
+          last_slot_tx.without_hyper_sfn() -
+          u.data.last_sr_slot;
+
+      u.data.sum_sr_to_pusch_delay_slots +=
+          sr_to_pusch_delay;
+
+      u.data.max_sr_to_pusch_delay_slots =
+          std::max(
+              sr_to_pusch_delay,
+              u.data.max_sr_to_pusch_delay_slots);
+
+      u.data.last_sr_slot.clear();
+      u.data.count_handled_sr++;
+    }
+
+    ++u.data.nof_puschs;
+
+    if (u.data.last_pusch_slot.valid()) {
+      u.data.max_pusch_distance_slots =
+          std::max(
+              static_cast<unsigned>(
+                  last_slot_tx.without_hyper_sfn() -
+                  u.data.last_pusch_slot),
+              u.data.max_pusch_distance_slots);
+    }
+
+    u.data.last_pusch_slot =
+        last_slot_tx.without_hyper_sfn();
   }
+  //habib added
+
+    // PUCCH resource usage.
+    prb_bitmap pucch_prbs(cell_cfg.nof_ul_prbs);
+    for (const auto& pucch : slot_result.ul.pucchs) {
+      // Mark the PRBs used by this PUCCH.
+      const prb_interval prbs = pucch.grant_prbs();
+      pucch_prbs.fill(prbs.start(), prbs.stop());
+      if (pucch.res->second_hop_prb.has_value()) {
+        pucch_prbs.fill(*pucch.res->second_hop_prb, *pucch.res->second_hop_prb + prbs.length());
+      }
+    }
   data.pucch_rbs_used += pucch_prbs.count();
 
   // Count DL and UL slots.
@@ -601,6 +770,12 @@ cell_metrics_handler::ue_metric_context::compute_report(std::chrono::millisecond
   ret.ul_mcs              = sch_mcs_index{mcs};
   ret.tot_pdsch_prbs_used = data.tot_dl_prbs_used;
   ret.tot_pusch_prbs_used = data.tot_ul_prbs_used;
+  
+  //habib added
+  // Transfer all individual PUSCH allocation records into the report.
+  ret.pusch_allocations = std::move(data.pusch_allocations);
+  //habib added
+
   ret.dl_brate_kbps       = static_cast<double>(data.sum_dl_tb_bytes * 8U) / metric_report_period.count();
   ret.ul_brate_kbps       = static_cast<double>(data.sum_ul_tb_bytes * 8U) / metric_report_period.count();
   ret.dl_nof_ok           = data.count_uci_harq_acks;

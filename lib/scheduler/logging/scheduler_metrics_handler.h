@@ -16,6 +16,10 @@
 #include "ocudu/support/math/stats.h"
 #include "ocudu/support/units.h"
 
+//habib added
+#include <vector>
+//habib added
+
 namespace ocudu {
 
 class cell_configuration;
@@ -67,6 +71,12 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
       unsigned   nof_pusch_invalid_csis         = 0;
       unsigned   tot_dl_prbs_used               = 0;
       unsigned   tot_ul_prbs_used               = 0;
+
+      //habib added
+      /// PUSCH allocations collected during the current reporting window.
+      std::vector<scheduler_pusch_allocation> pusch_allocations;
+      //habib added
+
       unsigned   sum_ul_ce_delay_slots          = 0;
       unsigned   max_ul_ce_delay_slots          = 0;
       unsigned   nof_ul_ces                     = 0;

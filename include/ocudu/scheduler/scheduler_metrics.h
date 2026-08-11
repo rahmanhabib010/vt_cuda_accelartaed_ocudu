@@ -19,6 +19,59 @@
 
 namespace ocudu {
 
+// habib added
+/// One contiguous PRB range inside the PUSCH BWP.
+///
+/// The represented interval is:
+///   [rb_start, rb_start + rb_length)
+struct scheduler_prb_range {
+  /// Starting PRB index relative to the PUSCH BWP.
+  unsigned rb_start = 0;
+
+  /// Number of contiguous PRBs in this range.
+  unsigned rb_length = 0;
+};
+
+/// Detailed information about one PUSCH allocation for one UE.
+struct scheduler_pusch_allocation {
+  /// Transmission slot containing this PUSCH grant.
+  slot_point_extended slot;
+
+  /// Resource-allocation type:
+  ///   0 = RBG bitmap, potentially non-contiguous.
+  ///   1 = contiguous PRB/VRB interval.
+  unsigned allocation_type = 1;
+
+  /// Starting CRB of the active PUSCH BWP.
+  unsigned bwp_start_crb = 0;
+
+  /// Size of the active PUSCH BWP in PRBs.
+  unsigned bwp_size_prbs = 0;
+
+  /// Total number of PRBs allocated by this grant.
+  unsigned nof_prbs = 0;
+
+  /// Frequency-domain PRB ranges relative to the PUSCH BWP.
+  ///
+  /// Type 1 normally contains exactly one range.
+  /// Type 0 can contain one or more ranges.
+  std::vector<scheduler_prb_range> prb_ranges;
+
+  /// RBG indices selected by a Type-0 allocation.
+  ///
+  /// Empty for Type 1.
+  std::vector<unsigned> rbg_indices;
+
+  /// Whether intra-slot PUSCH frequency hopping is enabled.
+  bool intra_slot_freq_hopping = false;
+
+  /// First PRB after the intra-slot frequency hop.
+  ///
+  /// Present only when intra_slot_freq_hopping is true.
+  std::optional<unsigned> second_hop_rb_start;
+};
+// habib added
+
 /// \brief Snapshot of the metrics for a UE.
 struct scheduler_ue_metrics {
   /// UE index in the DU for this UE.
@@ -48,6 +101,13 @@ struct scheduler_ue_metrics {
   sch_mcs_index ul_mcs;
   /// Number of RBs used for PUSCH.
   unsigned tot_pusch_prbs_used;
+
+  // habib added
+  /// Individual PUSCH allocations during this metrics report window.
+  std::vector<scheduler_pusch_allocation> pusch_allocations;
+  // habib added
+
+
   /// \brief Experienced MAC UL bit rate in kbps, considering the size of the allocated MAC UL PDUs for which the
   /// respective CRC was decoded.
   double ul_brate_kbps;
@@ -114,6 +174,9 @@ inline const char* sched_event_to_string(scheduler_cell_event::event_type ev)
   static constexpr std::array<const char*, 3> names = {"ue_add", "ue_reconf", "ue_rem"};
   return names[std::min(static_cast<size_t>(ev), names.size() - 1)];
 }
+
+
+
 
 /// \brief Snapshot of the metrics for a cell and its UEs.
 struct scheduler_cell_metrics {

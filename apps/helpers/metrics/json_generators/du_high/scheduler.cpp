@@ -35,6 +35,89 @@ void to_json(nlohmann::json& json, const scheduler_cell_event& metrics)
   json["event_type"] = event_to_string(metrics.type);
 }
 
+//habib added
+void to_json(
+    nlohmann::json& json,
+    const scheduler_prb_range& range)
+{
+  json["rb_start"] =
+      range.rb_start;
+
+  json["rb_length"] =
+      range.rb_length;
+
+  // The stop index is exclusive.
+  json["rb_stop"] =
+      range.rb_start + range.rb_length;
+}
+
+void to_json(
+    nlohmann::json& json,
+    const scheduler_pusch_allocation& allocation)
+{
+  json["hyper_sfn"] =
+      allocation.slot.hyper_sfn();
+
+  json["sfn"] =
+      allocation.slot.sfn();
+
+  json["slot_index"] =
+      allocation.slot.slot_index();
+
+  json["slot_count"] =
+      allocation.slot.count();
+
+  json["allocation_type"] =
+      allocation.allocation_type;
+
+  json["bwp_start_crb"] =
+      allocation.bwp_start_crb;
+
+  json["bwp_size_prbs"] =
+      allocation.bwp_size_prbs;
+
+  json["nof_prbs"] =
+      allocation.nof_prbs;
+
+  json["prb_ranges"] =
+      allocation.prb_ranges;
+
+  json["intra_slot_freq_hopping"] =
+      allocation.intra_slot_freq_hopping;
+
+  if (allocation.allocation_type == 0) {
+    json["rbg_indices"] =
+        allocation.rbg_indices;
+  }
+
+  if (allocation.second_hop_rb_start.has_value()) {
+    json["second_hop_rb_start"] =
+        allocation.second_hop_rb_start.value();
+  }
+
+  /*
+   * Convenience fields for Type 1.
+   *
+   * Type 1 has exactly one contiguous PRB range, so expose
+   * rb_start and rb_length directly as well.
+   */
+  if (allocation.allocation_type == 1 &&
+      allocation.prb_ranges.size() == 1) {
+    json["rb_start"] =
+        allocation.prb_ranges.front().rb_start;
+
+    json["rb_length"] =
+        allocation.prb_ranges.front().rb_length;
+
+    json["rb_stop"] =
+        allocation.prb_ranges.front().rb_start +
+        allocation.prb_ranges.front().rb_length;
+  }
+}
+//habib added
+
+
+
 void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
 {
   json["ue"]   = metrics.ue_index;
@@ -73,6 +156,13 @@ void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
   json["srs_ta_ns"] =
       (metrics.srs_ta_stats.get_nof_observations() > 0) ? std::optional{metrics.srs_ta_stats.get_mean() * 1e9} : 0.0f;
   json["ul_mcs"]                       = metrics.ul_mcs.value();
+  
+  //habib added
+  json["tot_pusch_prbs_used"]          = metrics.tot_pusch_prbs_used;
+
+  json["pusch_allocations"]            = metrics.pusch_allocations;
+  //habib added
+
   json["ul_brate"]                     = metrics.ul_brate_kbps * 1e3;
   json["ul_nof_ok"]                    = metrics.ul_nof_ok;
   json["ul_nof_nok"]                   = metrics.ul_nof_nok;
