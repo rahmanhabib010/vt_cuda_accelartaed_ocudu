@@ -294,6 +294,12 @@ void fapi_to_mac_indications_fastpath_translator::on_srs_indication(const fapi::
   mac_pdu.rnti                = msg.pdu.rnti;
   mac_pdu.time_advance_offset = msg.pdu.timing_advance_offset;
 
+  //habib added
+  mac_pdu.epre_dB        = msg.pdu.epre_dB;
+  mac_pdu.rsrp_dB        = msg.pdu.rsrp_dB;
+  mac_pdu.noise_variance = msg.pdu.noise_variance;
+  //habib added
+
   if (msg.pdu.matrix) {
     mac_pdu.report = mac_srs_pdu::normalized_channel_iq_matrix{*msg.pdu.matrix};
   }

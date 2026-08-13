@@ -501,6 +501,13 @@ void phy_to_fapi_results_event_fastpath_translator::on_new_srs_results(const ul_
     srs_pdu_builder.set_metrics_parameters(
         phy_time_unit::from_seconds(result.processor_result.time_alignment.time_alignment));
     srs_pdu_builder.set_codebook_report_matrix(result.processor_result.channel_matrix);
+    //habib added
+    srs_pdu_builder.set_estimator_metrics(
+      result.processor_result.epre_dB,
+      result.processor_result.rsrp_dB,
+      result.processor_result.noise_variance);
+    //habib added
+
   }
 
   if (context.is_positioning_report_requested) {

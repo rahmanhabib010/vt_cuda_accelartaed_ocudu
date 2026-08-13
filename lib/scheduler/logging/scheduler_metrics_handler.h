@@ -77,6 +77,11 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
       std::vector<scheduler_pusch_allocation> pusch_allocations;
       //habib added
 
+      //habib added
+      /// Detailed SRS reports collected during the current metrics period.
+      std::vector<scheduler_srs_report> srs_reports;
+      //habib added
+
       unsigned   sum_ul_ce_delay_slots          = 0;
       unsigned   max_ul_ce_delay_slots          = 0;
       unsigned   nof_ul_ces                     = 0;
@@ -207,7 +212,14 @@ public:
   void handle_crc_indication(slot_point sl_rx, const ul_crc_pdu_indication& crc_pdu, units::bytes tbs);
 
   /// \brief Handle SRS indication.
-  void handle_srs_indication(const srs_indication::srs_indication_pdu& srs_pdu, unsigned ri);
+  
+  //habib added
+  void handle_srs_indication(
+    slot_point srs_slot,
+    const srs_indication::srs_indication_pdu& srs_pdu,
+    unsigned ri);
+  //habib added
+
 
   /// \brief Handle UCI that contains HARQ-ACK information.
   void handle_uci_with_harq_ack(du_ue_index_t ue_index, slot_point slot_rx, bool pucch);

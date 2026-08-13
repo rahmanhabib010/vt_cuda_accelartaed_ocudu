@@ -230,6 +230,12 @@ struct srs_indication {
     /// \remark This Channel matrix assumes that the SRS usage is codebook-based, which is the only usage currently
     /// supported.
     srs_channel_matrix channel_matrix;
+    
+    // habib added
+    std::optional<float> epre_dB;
+    std::optional<float> rsrp_dB;
+    std::optional<float> noise_variance;
+    //habib added
   };
 
   using srs_pdu_list = static_vector<srs_indication_pdu, MAX_SRS_PDUS_PER_SRS_IND>;

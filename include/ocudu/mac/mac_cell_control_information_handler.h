@@ -266,6 +266,13 @@ struct mac_srs_pdu {
   rnti_t rnti;
   /// Timing Advance Offset measured for the UE.
   std::optional<phy_time_unit> time_advance_offset;
+
+  //habib added
+  std::optional<float> epre_dB;
+  std::optional<float> rsrp_dB;
+  std::optional<float> noise_variance;
+  //habib added
+
   /// \brief Report, which can be of several types, namely normalized channel IQ matrix, positioning.
   std::variant<normalized_channel_iq_matrix, positioning_report> report;
 };

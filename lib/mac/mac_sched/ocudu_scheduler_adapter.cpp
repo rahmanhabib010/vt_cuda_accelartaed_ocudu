@@ -414,9 +414,21 @@ void ocudu_scheduler_adapter::cell_handler::handle_srs(const mac_srs_indication_
   for (const auto& mac_pdu : msg.srss) {
     // Only add PDUs with normalized channel IQ matrix.
     if (const auto* matrix = std::get_if<mac_srs_pdu::normalized_channel_iq_matrix>(&mac_pdu.report)) {
-      ind.srss.emplace_back(
-          parent.rnti_mng[mac_pdu.rnti], mac_pdu.rnti, mac_pdu.time_advance_offset, matrix->channel_matrix);
+    //  ind.srss.emplace_back(
+    //      parent.rnti_mng[mac_pdu.rnti], mac_pdu.rnti, mac_pdu.time_advance_offset, matrix->channel_matrix);
+    //}
+      //habib added
+      auto& srs_pdu = ind.srss.emplace_back(
+      parent.rnti_mng[mac_pdu.rnti],
+      mac_pdu.rnti,
+      mac_pdu.time_advance_offset,
+      matrix->channel_matrix);
+
+      srs_pdu.epre_dB        = mac_pdu.epre_dB;
+      srs_pdu.rsrp_dB        = mac_pdu.rsrp_dB;
+      srs_pdu.noise_variance = mac_pdu.noise_variance;
     }
+      //habib added
   }
   // Forward SRS indication to the scheduler.
   parent.sched_impl->handle_srs_indication(ind);

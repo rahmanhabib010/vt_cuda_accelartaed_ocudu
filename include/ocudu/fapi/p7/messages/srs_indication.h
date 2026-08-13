@@ -25,6 +25,14 @@ struct srs_indication_pdu {
   rnti_t                                rnti;
   std::optional<phy_time_unit>          timing_advance_offset;
   std::optional<srs_channel_matrix>     matrix;
+  
+  // Raw SRS estimator outputs.
+  // added by habib
+  std::optional<float>                  epre_dB;
+  std::optional<float>                  rsrp_dB;
+  std::optional<float>                  noise_variance;
+  // added by habib
+
   std::optional<srs_positioning_report> positioning;
 };
 

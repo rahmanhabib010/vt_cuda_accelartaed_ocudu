@@ -17,6 +17,10 @@
 #include <optional>
 #include <vector>
 
+//habib added
+#include "ocudu/ran/srs/srs_channel_matrix.h"
+//habib added
+
 namespace ocudu {
 
 // habib added
@@ -72,6 +76,32 @@ struct scheduler_pusch_allocation {
 };
 // habib added
 
+//habib added
+/// Detailed information associated with one received UE SRS.
+struct scheduler_srs_report {
+  /// Slot where this SRS was received.
+  slot_point srs_slot;
+
+  /// Wideband SRS channel matrix.
+  srs_channel_matrix channel_matrix;
+
+  /// Wideband SRS EPRE in dB.
+  std::optional<float> srs_epre_db;
+
+  /// Wideband SRS RSRP in dB.
+  std::optional<float> srs_rsrp_db;
+
+  /// Wideband SRS noise variance, linear quantity.
+  std::optional<float> srs_noise_variance;
+
+  /// Qualitative SRS SNR derived from the normalized channel matrix.
+  std::optional<float> srs_snr_db;
+
+  /// SRS-derived timing advance in ns.
+  std::optional<float> srs_ta_ns;
+};
+//habib added
+
 /// \brief Snapshot of the metrics for a UE.
 struct scheduler_ue_metrics {
   /// UE index in the DU for this UE.
@@ -106,6 +136,11 @@ struct scheduler_ue_metrics {
   /// Individual PUSCH allocations during this metrics report window.
   std::vector<scheduler_pusch_allocation> pusch_allocations;
   // habib added
+
+  //habib added
+  /// Detailed SRS reports collected in this metrics reporting interval.
+  std::vector<scheduler_srs_report> srs_reports;
+  //habib added
 
 
   /// \brief Experienced MAC UL bit rate in kbps, considering the size of the allocated MAC UL PDUs for which the

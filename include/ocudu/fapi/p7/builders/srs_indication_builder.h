@@ -56,6 +56,20 @@ public:
 
     return *this;
   }
+/// Sets raw wideband SRS estimator metrics. 
+//added by habib
+  srs_indication_pdu_builder&
+  set_estimator_metrics(std::optional<float> epre_dB,
+                        std::optional<float> rsrp_dB,
+                        std::optional<float> noise_variance)
+  {
+    pdu.epre_dB        = epre_dB;
+    pdu.rsrp_dB        = rsrp_dB;
+    pdu.noise_variance = noise_variance;
+
+    return *this;
+  }
+//added by habib
 };
 
 /// SRS.indication message builder that helps to fill in the parameters specified in SCF-222 v4.0 Section 3.4.10.

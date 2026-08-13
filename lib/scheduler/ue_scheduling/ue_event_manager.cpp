@@ -653,8 +653,12 @@ void ue_cell_event_manager::handle_srs_indication(const srs_indication& ind)
     if (srs_pdu_ptr == nullptr) {
       return;
     }
-
-    auto srs_handle_impl = [this, srs_ptr = std::move(srs_pdu_ptr)]() {
+    //habib added
+    auto srs_handle_impl =
+    [this,
+     srs_slot = ind.slot_rx,
+     srs_ptr = std::move(srs_pdu_ptr)]() {
+    //habib added
       // Fetch UE objects.
       if (not ue_db.contains(srs_ptr->ue_index)) {
         return event_result::invalid_ue;
@@ -683,10 +687,17 @@ void ue_cell_event_manager::handle_srs_indication(const srs_indication& ind)
         // Notify UL TA update.
         ue_db[ue_cc->ue_index].handle_ul_n_ta_update_indication(
             ue_cc->cell_index, sinr_dB, srs_ptr->time_advance_offset.value());
-
-        // Report the SRS PDU to the metrics handler.
-        metrics.handle_srs_indication(*srs_ptr, ue_cc->channel_state_manager().get_nof_ul_layers());
+      //  // Report the SRS PDU to the metrics handler.
+      // metrics.handle_srs_indication(*srs_ptr, ue_cc->channel_state_manager().get_nof_ul_layers());
       }
+      //habib added
+      // ALWAYS record the SRS event.
+      metrics.handle_srs_indication(
+      srs_slot,
+      *srs_ptr,
+      ue_cc->channel_state_manager().get_nof_ul_layers());
+      //habib added
+
       return event_result::processed;
     };
 

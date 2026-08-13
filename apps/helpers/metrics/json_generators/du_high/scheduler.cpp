@@ -6,6 +6,7 @@
 #include "helpers.h"
 #include "json_generators/generator_helpers.h"
 #include "ocudu/scheduler/scheduler_metrics.h"
+#include <complex>
 
 using namespace ocudu;
 using namespace app_helpers;
@@ -138,6 +139,98 @@ void to_json(
 
   json["prb_ranges"] =
       allocation.prb_ranges;
+}
+//habib added
+
+//habib added
+void to_json(
+    nlohmann::json& json,
+    const scheduler_srs_report& report)
+{
+  // -------------------------------------------------------
+  // Slot information.
+  // -------------------------------------------------------
+
+  json["srs_slot"] = {
+      {"sfn", report.srs_slot.sfn()},
+      {"slot_index", report.srs_slot.slot_index()},
+      {"slot_count", report.srs_slot.count()}
+  };
+
+  // -------------------------------------------------------
+  // Wideband SRS channel matrix.
+  //
+  // Do not expose rx_port / tx_port in your requested JSON.
+  // -------------------------------------------------------
+
+  json["channel_matrix"] =
+      nlohmann::json::array();
+
+  const unsigned nof_rx_ports =
+      report.channel_matrix.get_nof_rx_ports();
+
+  const unsigned nof_tx_ports =
+      report.channel_matrix.get_nof_tx_ports();
+
+  for (unsigned rx = 0;
+       rx != nof_rx_ports;
+       ++rx) {
+
+    for (unsigned tx = 0;
+         tx != nof_tx_ports;
+         ++tx) {
+
+      const cf_t h =
+          report.channel_matrix.get_coefficient(
+              rx, tx);
+
+      json["channel_matrix"].push_back({
+          {"real", std::real(h)},
+          {"imag", std::imag(h)},
+          {"magnitude", std::abs(h)},
+          {"phase_rad", std::arg(h)}
+      });
+    }
+  }
+
+  // -------------------------------------------------------
+  // Raw/derived SRS measurements.
+  // -------------------------------------------------------
+
+  if (report.srs_epre_db.has_value()) {
+    json["srs_epre_db"] =
+        report.srs_epre_db.value();
+  } else {
+    json["srs_epre_db"] = nullptr;
+  }
+
+  if (report.srs_rsrp_db.has_value()) {
+    json["srs_rsrp_db"] =
+        report.srs_rsrp_db.value();
+  } else {
+    json["srs_rsrp_db"] = nullptr;
+  }
+
+  if (report.srs_noise_variance.has_value()) {
+    json["srs_noise_variance"] =
+        report.srs_noise_variance.value();
+  } else {
+    json["srs_noise_variance"] = nullptr;
+  }
+
+  if (report.srs_snr_db.has_value()) {
+    json["srs_snr_db"] =
+        report.srs_snr_db.value();
+  } else {
+    json["srs_snr_db"] = nullptr;
+  }
+
+  if (report.srs_ta_ns.has_value()) {
+    json["srs_ta_ns"] =
+        report.srs_ta_ns.value();
+  } else {
+    json["srs_ta_ns"] = nullptr;
+  }
 }
 //habib added
 
@@ -279,8 +372,14 @@ void to_json(nlohmann::json& json, const scheduler_ue_metrics& metrics)
   json["tot_pusch_prbs_used"] =
       metrics.tot_pusch_prbs_used;
 
+  //habib added
   json["pusch_allocations"] =
       metrics.pusch_allocations;
+
+  json["srs_reports"] =
+    metrics.srs_reports;
+  //habib added
+
 
   json["ul_mcs"]     = metrics.ul_mcs.value();
   json["ul_brate"]   = metrics.ul_brate_kbps * 1e3;

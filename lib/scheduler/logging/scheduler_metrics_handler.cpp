@@ -15,6 +15,10 @@
 #include "ocudu/ran/resource_allocation/rb_bitmap.h"
 #include "ocudu/scheduler/result/resource_block_group.h"
 #include <utility>
+
+#include "ocudu/support/math/math_utils.h"
+#include <cmath>
+#include <utility>
 // habib added
 
 using namespace ocudu;
@@ -198,6 +202,7 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
   }
 }
 
+/*
 void cell_metrics_handler::handle_srs_indication(const srs_indication::srs_indication_pdu& srs_pdu, unsigned ri)
 {
   if (not enabled()) {
@@ -212,6 +217,107 @@ void cell_metrics_handler::handle_srs_indication(const srs_indication::srs_indic
     }
   }
 }
+*/
+// habib added
+void cell_metrics_handler::handle_srs_indication(
+    slot_point srs_slot,
+    const srs_indication::srs_indication_pdu& srs_pdu,
+    unsigned ri)
+{
+  if (not enabled()) {
+    return;
+  }
+
+  if (not ues.contains(srs_pdu.ue_index)) {
+    return;
+  }
+
+  auto& u = ues[srs_pdu.ue_index];
+
+  scheduler_srs_report report{};
+
+  // -------------------------------------------------------
+  // SRS slot.
+  // -------------------------------------------------------
+
+  report.srs_slot = srs_slot;
+
+  // -------------------------------------------------------
+  // Wideband normalized SRS channel matrix.
+  // -------------------------------------------------------
+
+  report.channel_matrix = srs_pdu.channel_matrix;
+
+  // -------------------------------------------------------
+  // Raw PHY SRS estimator measurements.
+  // -------------------------------------------------------
+
+  report.srs_epre_db =
+      srs_pdu.epre_dB;
+
+  report.srs_rsrp_db =
+      srs_pdu.rsrp_dB;
+
+  report.srs_noise_variance =
+      srs_pdu.noise_variance;
+
+  // -------------------------------------------------------
+  // Derive qualitative SRS SNR from normalized H matrix.
+  //
+  // H is already noise normalized.
+  //
+  // Therefore:
+  //
+  // SNR_linear ~= ||H||_F^2
+  // -------------------------------------------------------
+
+  const float frobenius_norm =
+      srs_pdu.channel_matrix.frobenius_norm();
+
+  const float snr_linear =
+      frobenius_norm * frobenius_norm;
+
+  if (std::isfinite(snr_linear) &&
+      snr_linear > 0.0F) {
+
+    report.srs_snr_db =
+        convert_power_to_dB(snr_linear);
+  }
+
+  // -------------------------------------------------------
+  // SRS timing advance.
+  // -------------------------------------------------------
+
+  if (srs_pdu.time_advance_offset.has_value()) {
+
+    const float ta_seconds =
+        srs_pdu.time_advance_offset.value().to_seconds();
+
+    // Preserve existing aggregate TA metrics.
+    u.data.ta.update(ta_seconds);
+    u.data.srs_ta.update(ta_seconds);
+
+    // Event-level value requested by you.
+    report.srs_ta_ns =
+        ta_seconds * 1e9F;
+  }
+
+  // -------------------------------------------------------
+  // Preserve existing UL RI metric.
+  //
+  // This is NOT included in srs_reports[].
+  // -------------------------------------------------------
+
+  u.data.ul_ri.update(ri);
+
+  // -------------------------------------------------------
+  // Store this individual SRS event.
+  // -------------------------------------------------------
+
+  u.data.srs_reports.push_back(
+      std::move(report));
+}
+// habib added
 
 /*
 void cell_metrics_handler::handle_pucch_sinr(ue_metric_context& u, float sinr)
@@ -956,6 +1062,10 @@ cell_metrics_handler::ue_metric_context::compute_report(std::chrono::millisecond
   ret.pusch_allocations = std::move(data.pusch_allocations);
   //habib added
 
+   // habib added
+  ret.srs_reports = std::move(data.srs_reports);
+  //habib added
+
   ret.dl_brate_kbps       = static_cast<double>(data.sum_dl_tb_bytes * 8U) / metric_report_period.count();
   ret.ul_brate_kbps       = static_cast<double>(data.sum_ul_tb_bytes * 8U) / metric_report_period.count();
   ret.dl_nof_ok           = data.count_uci_harq_acks;
@@ -979,6 +1089,9 @@ cell_metrics_handler::ue_metric_context::compute_report(std::chrono::millisecond
   ret.pusch_ta_stats                 = data.pusch_ta;
   ret.pucch_ta_stats                 = data.pucch_ta;
   ret.srs_ta_stats                   = data.srs_ta;
+ 
+
+
   ret.last_phr                       = last_phr;
   ret.max_pdsch_distance_ms          = convert_slots_to_ms(data.max_pdsch_distance_slots);
   ret.max_pusch_distance_ms          = convert_slots_to_ms(data.max_pusch_distance_slots);
