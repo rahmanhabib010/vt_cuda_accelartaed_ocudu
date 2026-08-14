@@ -34,6 +34,63 @@ void to_json(nlohmann::json& json, const scheduler_cell_event& metrics)
   json["slot"]       = metrics.slot;
   json["rnti"]       = metrics.rnti;
   json["event_type"] = event_to_string(metrics.type);
+// habib added
+}
+
+static const char* crc_status_to_string(scheduler_pusch_crc_status status)
+{
+  switch (status) {
+    case scheduler_pusch_crc_status::pending:
+      return "pending";
+    case scheduler_pusch_crc_status::pass:
+      return "pass";
+    case scheduler_pusch_crc_status::fail:
+      return "fail";
+  }
+  return "pending";
+}
+
+static const char* ul_tx_type_to_string(scheduler_ul_tx_type type)
+{
+  return type == scheduler_ul_tx_type::retx ? "retx" : "newtx";
+}
+
+void to_json(nlohmann::json& json, const scheduler_ul_retx_candidate& candidate)
+{
+  json["rnti"]    = candidate.rnti;
+  json["harq_id"] = candidate.harq_id;
+}
+
+void to_json(nlohmann::json& json, const scheduler_ul_newtx_candidate& candidate)
+{
+  json["rnti"]                      = candidate.rnti;
+  json["pending_bytes_at_decision"] = candidate.pending_bytes_at_decision;
+  json["priority"]                  = candidate.priority;
+  json["rank"]                      = candidate.rank;
+}
+
+void to_json(nlohmann::json& json, const scheduler_ul_selected_grant& grant)
+{
+  json["rnti"]    = grant.rnti;
+  json["tx_type"] = ul_tx_type_to_string(grant.tx_type);
+}
+
+void to_json(nlohmann::json& json, const scheduler_ul_scheduler_decision& decision)
+{
+  json["decision_id"] = decision.decision_id;
+  json["decision_slot"] = {
+      {"hyper_sfn", decision.decision_slot.hyper_sfn()},
+      {"sfn", decision.decision_slot.sfn()},
+      {"slot_index", decision.decision_slot.slot_index()}};
+  json["target_pusch_slot"] = {
+      {"hyper_sfn", decision.target_pusch_slot.hyper_sfn()},
+      {"sfn", decision.target_pusch_slot.sfn()},
+      {"slot_index", decision.target_pusch_slot.slot_index()}};
+  json["k2"]               = decision.k2;
+  json["retx_candidates"]  = decision.retx_candidates;
+  json["newtx_candidates"] = decision.newtx_candidates;
+  json["selected_grants"]  = decision.selected_grants;
+// habib added
 }
 
 //habib added
@@ -119,6 +176,13 @@ void to_json(
     nlohmann::json& json,
     const scheduler_pusch_allocation& allocation)
 {
+// habib added
+  if (allocation.decision_id.has_value()) {
+    json["decision_id"] =
+        allocation.decision_id.value();
+  }
+
+// habib added
   json["hyper_sfn"] =
       allocation.slot.hyper_sfn();
 
@@ -139,6 +203,17 @@ void to_json(
 
   json["prb_ranges"] =
       allocation.prb_ranges;
+// habib added
+
+  json["mcs"] =
+      allocation.mcs;
+  json["tbs_bytes"] =
+      allocation.tbs_bytes;
+  json["harq_id"] =
+      allocation.harq_id;
+  json["crc_status"] =
+      crc_status_to_string(allocation.crc_status);
+// habib added
 }
 //habib added
 
@@ -433,6 +508,11 @@ void to_json(
   cell_json["average_latency"] =
       metrics.average_decision_latency.count();
 
+// habib added
+  json["ul_scheduler_decisions"] =
+      metrics.ul_scheduler_decisions;
+
+// habib added
   if (!metrics.ue_metrics.empty()) {
     json["ue_list"] = metrics.ue_metrics;
   }

@@ -36,10 +36,21 @@ struct scheduler_prb_range {
   unsigned rb_length = 0;
 };
 
+// habib added
+/// CRC state associated with a reported PUSCH transmission.
+enum class scheduler_pusch_crc_status { pending, pass, fail };
+
+// habib added
 /// Detailed information about one PUSCH allocation for one UE.
 struct scheduler_pusch_allocation {
   /// Transmission slot containing this PUSCH grant.
   slot_point_extended slot;
+// habib added
+
+  /// Scheduler decision that produced this grant.
+  /// Empty for PUSCHs created outside the regular intra-slice UE scheduler.
+  std::optional<uint64_t> decision_id;
+// habib added
 
   /// Resource-allocation type:
   ///   0 = RBG bitmap, potentially non-contiguous.
@@ -73,6 +84,20 @@ struct scheduler_pusch_allocation {
   ///
   /// Present only when intra_slot_freq_hopping is true.
   std::optional<unsigned> second_hop_rb_start;
+// habib added
+
+  /// Exact MCS used by this PUSCH.
+  unsigned mcs = 0;
+
+  /// Transport block size in bytes.
+  uint64_t tbs_bytes = 0;
+
+  /// UL HARQ process identifier.
+  unsigned harq_id = 0;
+
+  /// CRC state for this PUSCH.
+  scheduler_pusch_crc_status crc_status = scheduler_pusch_crc_status::pending;
+// habib added
 };
 // habib added
 
@@ -103,6 +128,39 @@ struct scheduler_srs_report {
 //habib added
 
 /// \brief Snapshot of the metrics for a UE.
+// habib added
+/// Whether an actually selected UL grant is a new transmission or HARQ retransmission.
+enum class scheduler_ul_tx_type { newtx, retx };
+
+struct scheduler_ul_retx_candidate {
+  rnti_t   rnti = rnti_t::INVALID_RNTI;
+  unsigned harq_id = 0;
+};
+
+struct scheduler_ul_newtx_candidate {
+  rnti_t   rnti = rnti_t::INVALID_RNTI;
+  uint64_t pending_bytes_at_decision = 0;
+  double   priority = 0.0;
+  unsigned rank = 0;
+};
+
+struct scheduler_ul_selected_grant {
+  rnti_t               rnti = rnti_t::INVALID_RNTI;
+  scheduler_ul_tx_type tx_type = scheduler_ul_tx_type::newtx;
+};
+
+struct scheduler_ul_scheduler_decision {
+  uint64_t            decision_id = 0;
+  slot_point_extended decision_slot;
+  slot_point_extended target_pusch_slot;
+  unsigned            k2 = 0;
+
+  std::vector<scheduler_ul_retx_candidate>  retx_candidates;
+  std::vector<scheduler_ul_newtx_candidate> newtx_candidates;
+  std::vector<scheduler_ul_selected_grant>  selected_grants;
+};
+
+// habib added
 struct scheduler_ue_metrics {
   /// UE index in the DU for this UE.
   du_ue_index_t ue_index;
@@ -265,6 +323,9 @@ struct scheduler_cell_metrics {
   /// Average number of RBs used for PUSCH per slot index in the TDD pattern.
   std::vector<unsigned>             pusch_prbs_used_per_tdd_slot_idx;
   std::vector<unsigned>             pdsch_prbs_used_per_tdd_slot_idx;
+// habib added
+  std::vector<scheduler_ul_scheduler_decision> ul_scheduler_decisions;
+// habib added
   std::vector<scheduler_cell_event> events;
   std::vector<scheduler_ue_metrics> ue_metrics;
 };

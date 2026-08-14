@@ -14,6 +14,9 @@
 // habib added
 #include "ocudu/ran/resource_allocation/rb_bitmap.h"
 #include "ocudu/scheduler/result/resource_block_group.h"
+// habib added
+#include <algorithm>
+// habib added
 #include <utility>
 
 #include "ocudu/support/math/math_utils.h"
@@ -35,6 +38,9 @@ private:
     // do nothing
     null_report.ue_metrics.clear();
     null_report.events.clear();
+// habib added
+    null_report.ul_scheduler_decisions.clear();
+// habib added
   }
   bool is_sched_report_required(slot_point_extended sl_tx) const override { return false; }
 
@@ -71,6 +77,134 @@ cell_metrics_handler::~cell_metrics_handler() {}
 bool cell_metrics_handler::enabled() const
 {
   return &notifier != &null_notifier;
+// habib added
+}
+
+slot_point_extended cell_metrics_handler::extend_slot(slot_point slot) const
+{
+  if (not last_slot_tx.valid()) {
+    return slot_point_extended{slot};
+  }
+
+  slot_point_extended extended = last_slot_tx;
+  extended += slot - last_slot_tx.without_hyper_sfn();
+  return extended;
+}
+
+scheduler_ul_scheduler_decision*
+cell_metrics_handler::find_ul_scheduler_decision(uint64_t decision_id)
+{
+  auto it = std::find_if(
+      data.ul_scheduler_decisions.begin(),
+      data.ul_scheduler_decisions.end(),
+      [decision_id](const scheduler_ul_scheduler_decision& decision) {
+        return decision.decision_id == decision_id;
+      });
+
+  return it != data.ul_scheduler_decisions.end() ? &(*it) : nullptr;
+}
+
+uint64_t cell_metrics_handler::start_ul_scheduler_decision(
+    slot_point decision_slot,
+    slot_point target_pusch_slot)
+{
+  if (not enabled()) {
+    return 0;
+  }
+
+  scheduler_ul_scheduler_decision decision{};
+  decision.decision_id   = next_ul_scheduler_decision_id++;
+  decision.decision_slot = extend_slot(decision_slot);
+
+  const int k2 = target_pusch_slot - decision_slot;
+  ocudu_assert(k2 >= 0, "Invalid negative PUSCH k2={}", k2);
+  decision.k2 = static_cast<unsigned>(k2);
+
+  decision.target_pusch_slot = decision.decision_slot;
+  decision.target_pusch_slot += k2;
+
+  data.ul_scheduler_decisions.push_back(std::move(decision));
+  return data.ul_scheduler_decisions.back().decision_id;
+}
+
+void cell_metrics_handler::add_ul_retx_candidate(
+    uint64_t  decision_id,
+    rnti_t    rnti,
+    harq_id_t harq_id)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    decision->retx_candidates.push_back(
+        scheduler_ul_retx_candidate{rnti, static_cast<unsigned>(harq_id)});
+  }
+}
+
+void cell_metrics_handler::add_ul_newtx_candidate(
+    uint64_t     decision_id,
+    rnti_t       rnti,
+    units::bytes pending_bytes_at_decision,
+    double       priority,
+    unsigned     rank)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    decision->newtx_candidates.push_back(
+        scheduler_ul_newtx_candidate{
+            rnti,
+            pending_bytes_at_decision.value(),
+            priority,
+            rank});
+  }
+}
+
+void cell_metrics_handler::add_ul_selected_grant(
+    uint64_t             decision_id,
+    rnti_t               rnti,
+    scheduler_ul_tx_type tx_type,
+    slot_point           target_pusch_slot)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    decision->selected_grants.push_back(
+        scheduler_ul_selected_grant{rnti, tx_type});
+
+    pending_ul_grant_correlations.push_back(
+        pending_ul_grant_correlation{decision_id, rnti, target_pusch_slot});
+  }
+}
+
+void cell_metrics_handler::finish_ul_scheduler_decision(uint64_t decision_id)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  auto it = std::find_if(
+      data.ul_scheduler_decisions.begin(),
+      data.ul_scheduler_decisions.end(),
+      [decision_id](const scheduler_ul_scheduler_decision& decision) {
+        return decision.decision_id == decision_id;
+      });
+
+  if (it == data.ul_scheduler_decisions.end()) {
+    return;
+  }
+
+  if (it->retx_candidates.empty() &&
+      it->newtx_candidates.empty() &&
+      it->selected_grants.empty()) {
+    data.ul_scheduler_decisions.erase(it);
+  }
+// habib added
 }
 
 void cell_metrics_handler::handle_ue_creation(du_ue_index_t ue_index, rnti_t rnti, pci_t pcell_pci)
@@ -179,6 +313,21 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
   }
   if (ues.contains(crc_pdu.ue_index)) {
     auto& u = ues[crc_pdu.ue_index];
+// habib added
+
+    for (auto it = u.data.pusch_allocations.rbegin();
+         it != u.data.pusch_allocations.rend();
+         ++it) {
+      if (it->slot.without_hyper_sfn() == sl_rx &&
+          it->harq_id == static_cast<unsigned>(crc_pdu.harq_id)) {
+        it->crc_status = crc_pdu.tb_crc_success
+                             ? scheduler_pusch_crc_status::pass
+                             : scheduler_pusch_crc_status::fail;
+        break;
+      }
+    }
+
+// habib added
     u.data.count_crc_acks += crc_pdu.tb_crc_success ? 1 : 0;
     ++u.data.count_crc_pdus;
     if (crc_pdu.ul_sinr_dB.has_value()) {
@@ -521,6 +670,9 @@ void cell_metrics_handler::report_metrics()
     // Compute statistics of the UE metrics and push the result to the report.
     next_report->ue_metrics.push_back(ue.compute_report(report_period, nof_slots_per_sf));
   }
+// habib added
+  next_report->ul_scheduler_decisions = std::move(data.ul_scheduler_decisions);
+// habib added
   next_report->events.swap(pending_events);
 
   next_report->pci = cell_cfg.params.pci;
@@ -870,6 +1022,30 @@ for (const ul_sched_info& ul_grant : slot_result.ul.puschs) {
   // ------------------------------------------------------------------
   allocation.slot = sl_tx;
 
+// habib added
+
+  // Grant metadata already present in the finalized ul_sched_info.
+  allocation.mcs        = ul_grant.pusch_cfg.mcs_index.value();
+  allocation.tbs_bytes  = ul_grant.pusch_cfg.tb_size_bytes.value();
+  allocation.harq_id    = static_cast<unsigned>(ul_grant.pusch_cfg.harq_id);
+  allocation.crc_status = scheduler_pusch_crc_status::pending;
+
+  // Correlate this PUSCH with the decision that selected the same RNTI
+  // for this target slot. This vector persists across reporting boundaries.
+  auto correlation_it = std::find_if(
+      pending_ul_grant_correlations.begin(),
+      pending_ul_grant_correlations.end(),
+      [&ul_grant, sl_tx](const pending_ul_grant_correlation& correlation) {
+        return correlation.rnti == ul_grant.pusch_cfg.rnti &&
+               correlation.target_pusch_slot == sl_tx.without_hyper_sfn();
+      });
+
+  if (correlation_it != pending_ul_grant_correlations.end()) {
+    allocation.decision_id = correlation_it->decision_id;
+    pending_ul_grant_correlations.erase(correlation_it);
+  }
+
+// habib added
   // ------------------------------------------------------------------
   // PUSCH BWP information.
   //
@@ -1035,6 +1211,9 @@ void cell_metrics_handler::handle_cell_deactivation()
   // Commit whatever is pending for the report.
   report_metrics();
   last_slot_tx = {};
+// habib added
+  pending_ul_grant_correlations.clear();
+// habib added
 }
 
 scheduler_ue_metrics

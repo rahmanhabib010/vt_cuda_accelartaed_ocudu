@@ -160,6 +160,11 @@ private:
   std::optional<ul_ran_slice_candidate> pending_ul_slice;
   scheduler_policy*                     pending_ul_policy = nullptr;
   unsigned                              pending_ul_rbs_to_alloc = 0;
+// habib added
+
+  /// Decision retained while UL newTx builders wait at the multi-cell sync point.
+  std::optional<uint64_t> pending_ul_metrics_decision_id;
+// habib added
 };
 
 } // namespace ocudu

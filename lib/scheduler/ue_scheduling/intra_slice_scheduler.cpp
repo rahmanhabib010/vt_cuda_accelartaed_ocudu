@@ -153,6 +153,9 @@ void intra_slice_scheduler::slot_indication(slot_point sl_tx)
 {
   ocudu_sanity_check(not has_pending_ul_sched(), "UL newTx grants were not finalized before advancing the slot");
 
+// habib added
+  pending_ul_metrics_decision_id.reset();
+// habib added
   pdcch_slot = sl_tx;
   // Reset slots to ensure used RB bitmaps are updated when scheduling the next slot, as allocations could have been
   // made by other scheduler components in the meantime (e.g., fallback scheduler).
@@ -222,22 +225,47 @@ bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, sched
     return false;
   }
 
+// habib added
+  pending_ul_metrics_decision_id =
+      cell_metrics.start_ul_scheduler_decision(pdcch_slot, pusch_slot);
+
+// habib added
   // Schedule reTxs.
   unsigned nof_retxs_alloc = schedule_ul_retx_candidates(slice, puschs_to_alloc);
   puschs_to_alloc -= std::min(puschs_to_alloc, nof_retxs_alloc);
   if (puschs_to_alloc == 0) {
+// habib added
+    cell_metrics.finish_ul_scheduler_decision(*pending_ul_metrics_decision_id);
+    pending_ul_metrics_decision_id.reset();
+// habib added
     return false;
   }
 
   // Allocate the control-plane resources for UE newTx grants, but defer VRB selection until all cells reach the
   // synchronization point.
-  return collect_ul_newtx_candidates(slice, ul_policy, puschs_to_alloc);
+// habib added
+  const bool has_pending_newtx =
+      collect_ul_newtx_candidates(slice, ul_policy, puschs_to_alloc);
+
+  if (not has_pending_newtx) {
+    cell_metrics.finish_ul_scheduler_decision(*pending_ul_metrics_decision_id);
+    pending_ul_metrics_decision_id.reset();
+  }
+  return has_pending_newtx;
+// habib added
 }
 
 void intra_slice_scheduler::finalize_ul_sched()
 {
   ocudu_sanity_check(has_pending_ul_sched(), "No UL newTx batch is pending finalization");
   finalize_ul_newtx_candidates();
+// habib added
+
+  if (pending_ul_metrics_decision_id.has_value()) {
+    cell_metrics.finish_ul_scheduler_decision(*pending_ul_metrics_decision_id);
+    pending_ul_metrics_decision_id.reset();
+  }
+// habib added
 }
 
 /// \brief Helper function that returns a pair with the remaining number of RBs to allocate in this slice scheduling
@@ -369,6 +397,13 @@ unsigned intra_slice_scheduler::schedule_ul_retx_candidates(ul_ran_slice_candida
       continue;
     }
 
+// habib added
+    if (pending_ul_metrics_decision_id.has_value()) {
+      cell_metrics.add_ul_retx_candidate(
+          *pending_ul_metrics_decision_id, h.rnti(), h.id());
+    }
+
+// habib added
     // Allocate PDCCH and PUSCH.
     // NOTE: the symbols passed to the grant are the symbols that are available for PUSCH and for which the used VRBs
     // have been computed.
@@ -383,6 +418,18 @@ unsigned intra_slice_scheduler::schedule_ul_retx_candidates(ul_ran_slice_candida
       vrb_interval alloc_vrbs = result.value();
       used_ul_vrbs.fill(alloc_vrbs.start(), alloc_vrbs.stop());
       slice.store_grant(alloc_vrbs.length());
+// habib added
+      if (pending_ul_metrics_decision_id.has_value()) {
+        cell_metrics.add_ul_selected_grant(
+            *pending_ul_metrics_decision_id,
+            // habib added
+            u.crnti(),
+            // habib added
+            scheduler_ul_tx_type::retx,
+            pusch_slot);
+      }
+
+// habib added
       if (++alloc_count >= max_ue_grants_to_alloc or slice.remaining_rbs() == 0) {
         // Maximum number of allocations reached.
         break;
@@ -453,6 +500,20 @@ void intra_slice_scheduler::prepare_newtx_ul_candidates(const ul_ran_slice_candi
     return cand.priority != forbid_sched_priority;
   });
   newtx_candidates.erase(rit.base(), newtx_candidates.end());
+// habib added
+
+  if (pending_ul_metrics_decision_id.has_value()) {
+    for (unsigned idx = 0; idx != newtx_candidates.size(); ++idx) {
+      const auto& candidate = newtx_candidates[idx];
+      cell_metrics.add_ul_newtx_candidate(
+          *pending_ul_metrics_decision_id,
+          candidate.ue->crnti(),
+          candidate.pending_bytes,
+          candidate.priority,
+          idx + 1);
+    }
+  }
+// habib added
 }
 
 unsigned intra_slice_scheduler::schedule_dl_newtx_candidates(dl_ran_slice_candidate& slice,
@@ -686,7 +747,25 @@ unsigned intra_slice_scheduler::finalize_ul_newtx_candidates()
     }
 
     // Save CRBs, MCS and RI.
+    // habib added
+    // set_pusch_params() finalizes the builder and clears its parent pointer.
+    // Cache the selected UE RNTI before finalizing so metrics code never
+    // dereferences grant_builder after it has been invalidated.
+    const rnti_t selected_newtx_rnti = grant_builder.ue().crnti();
+    // habib added
     grant_builder.set_pusch_params(alloc_vrbs);
+// habib added
+
+    if (pending_ul_metrics_decision_id.has_value()) {
+      cell_metrics.add_ul_selected_grant(
+          *pending_ul_metrics_decision_id,
+          // habib added
+          selected_newtx_rnti,
+          // habib added
+          scheduler_ul_tx_type::newtx,
+          pusch_slot);
+    }
+// habib added
 
     // Fill used CRBs.
     unsigned nof_rbs_alloc = alloc_vrbs.length();

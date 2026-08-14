@@ -63,12 +63,21 @@ UE_METRICS_KEEP = (
 )
 
 PUSCH_ALLOCATION_KEEP = (
+# habib added
+    "decision_id",
+# habib added
     "allocation_type",
     "bwp_size_prbs",
     "hyper_sfn",
     "nof_prbs",
     "sfn",
     "slot_index",
+# habib added
+    "mcs",
+    "tbs_bytes",
+    "harq_id",
+    "crc_status",
+# habib added
 )
 
 PRB_RANGE_KEEP = (
@@ -143,6 +152,85 @@ def rnti_key(rnti: Any) -> str:
         return f"RNTI={int(rnti):04X}"
     except (TypeError, ValueError):
         return f"RNTI={rnti}"
+# habib added
+
+
+def rnti_hex(rnti: Any) -> str:
+    # Decision arrays use bare hexadecimal RNTIs such as "4604".
+    try:
+        return f"{int(rnti):04X}"
+    except (TypeError, ValueError):
+        return str(rnti)
+
+
+def filter_ul_scheduler_decision(
+    decision: dict[str, Any],
+) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+
+    if "decision_id" in decision:
+        output["decision_id"] = decision["decision_id"]
+
+    for slot_name in ("decision_slot", "target_pusch_slot"):
+        slot = decision.get(slot_name)
+        if isinstance(slot, dict):
+            output[slot_name] = {
+                key: slot[key]
+                for key in ("hyper_sfn", "sfn", "slot_index")
+                if key in slot
+            }
+
+    if "k2" in decision:
+        output["k2"] = decision["k2"]
+
+    retx_candidates = decision.get("retx_candidates", [])
+    output["retx_candidates"] = [
+        {
+            "rnti": rnti_hex(candidate.get("rnti")),
+            **(
+                {"harq_id": candidate["harq_id"]}
+                if "harq_id" in candidate
+                else {}
+            ),
+        }
+        for candidate in retx_candidates
+        if isinstance(candidate, dict)
+    ]
+
+    newtx_candidates = decision.get("newtx_candidates", [])
+    output["newtx_candidates"] = [
+        {
+            "rnti": rnti_hex(candidate.get("rnti")),
+            **{
+                key: candidate[key]
+                for key in (
+                    "pending_bytes_at_decision",
+                    "priority",
+                    "rank",
+                )
+                if key in candidate
+            },
+        }
+        for candidate in newtx_candidates
+        if isinstance(candidate, dict)
+    ]
+
+    selected_grants = decision.get("selected_grants", [])
+    output["selected_grants"] = [
+        {
+            "rnti": rnti_hex(grant.get("rnti")),
+            **(
+                {"tx_type": grant["tx_type"]}
+                if "tx_type" in grant
+                else {}
+            ),
+        }
+        for grant in selected_grants
+        if isinstance(grant, dict)
+    ]
+
+    return output
+# habib added
 
 
 def learn_pci_mapping_from_mac(metric: dict[str, Any]) -> None:
@@ -375,8 +463,24 @@ def transform_scheduler_report(
                 for key in CELL_METRICS_KEEP
                 if key in raw_cell_metrics
             },
+# habib added
+            "ul_scheduler_decisions": [],
+# habib added
             "ues": {},
         }
+# habib added
+
+        raw_ul_scheduler_decisions = cell.get(
+            "ul_scheduler_decisions",
+            [],
+        )
+        if isinstance(raw_ul_scheduler_decisions, list):
+            cell_output["ul_scheduler_decisions"] = [
+                filter_ul_scheduler_decision(decision)
+                for decision in raw_ul_scheduler_decisions
+                if isinstance(decision, dict)
+            ]
+# habib added
 
         ue_list = cell.get("ue_list", [])
 

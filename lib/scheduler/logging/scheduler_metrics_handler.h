@@ -166,6 +166,16 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
     unsigned filtered_events_counter = 0;
     // Number of RBs used for PUCCH in the reporting period.
     unsigned pucch_rbs_used = 0;
+// habib added
+
+    std::vector<scheduler_ul_scheduler_decision> ul_scheduler_decisions;
+  };
+
+  struct pending_ul_grant_correlation {
+    uint64_t   decision_id = 0;
+    rnti_t     rnti = rnti_t::INVALID_RNTI;
+    slot_point target_pusch_slot;
+// habib added
   };
 
   scheduler_cell_metrics_notifier& notifier;
@@ -181,6 +191,10 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
   flat_map<rnti_t, du_ue_index_t>                     rnti_to_ue_index_lookup;
   std::vector<unsigned>                               ul_prbs_used_per_tdd_slot_idx;
   std::vector<unsigned>                               dl_prbs_used_per_tdd_slot_idx;
+// habib added
+  std::vector<pending_ul_grant_correlation>           pending_ul_grant_correlations;
+  uint64_t                                            next_ul_scheduler_decision_id = 1;
+// habib added
 
   /// Metrics tracked that are reset on every report.
   non_persistent_data data;
@@ -210,6 +224,21 @@ public:
 
   /// \brief Register CRC indication.
   void handle_crc_indication(slot_point sl_rx, const ul_crc_pdu_indication& crc_pdu, units::bytes tbs);
+// habib added
+
+  uint64_t start_ul_scheduler_decision(slot_point decision_slot, slot_point target_pusch_slot);
+  void add_ul_retx_candidate(uint64_t decision_id, rnti_t rnti, harq_id_t harq_id);
+  void add_ul_newtx_candidate(uint64_t     decision_id,
+                              rnti_t       rnti,
+                              units::bytes pending_bytes_at_decision,
+                              double       priority,
+                              unsigned     rank);
+  void add_ul_selected_grant(uint64_t             decision_id,
+                             rnti_t               rnti,
+                             scheduler_ul_tx_type tx_type,
+                             slot_point           target_pusch_slot);
+  void finish_ul_scheduler_decision(uint64_t decision_id);
+// habib added
 
   /// \brief Handle SRS indication.
   
@@ -266,6 +295,10 @@ public:
   void handle_cell_deactivation();
 
 private:
+// habib added
+  slot_point_extended extend_slot(slot_point slot) const;
+  scheduler_ul_scheduler_decision* find_ul_scheduler_decision(uint64_t decision_id);
+// habib added
   void handle_pucch_sinr(ue_metric_context& u, float sinr);
   void handle_csi_report(ue_metric_context& u, const csi_report_data& csi);
   void report_metrics();
