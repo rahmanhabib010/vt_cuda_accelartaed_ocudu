@@ -239,6 +239,10 @@ public:
                                             const scheduler_ul_newtx_grant_context& grant_context);
   void set_ul_scheduler_state_snapshot(uint64_t decision_id, scheduler_ul_state_snapshot snapshot);
 // habib added
+  void mark_ul_newtx_candidate_feasible(uint64_t decision_id, rnti_t rnti);
+// habib added
+
+// habib added
   void add_ul_selected_grant(uint64_t             decision_id,
                              rnti_t               rnti,
                              scheduler_ul_tx_type tx_type,

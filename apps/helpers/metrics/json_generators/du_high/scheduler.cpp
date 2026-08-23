@@ -131,6 +131,10 @@ void to_json(nlohmann::json& json, const scheduler_ul_scheduler_decision& decisi
 // habib added
   json["retx_candidates"]  = decision.retx_candidates;
   json["newtx_candidates"] = decision.newtx_candidates;
+// habib added
+  json["feasible_action_mask"] = decision.feasible_action_mask;
+// habib added
+
   json["selected_grants"]  = decision.selected_grants;
 // habib added
 }

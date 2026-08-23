@@ -752,6 +752,14 @@ bool intra_slice_scheduler::collect_ul_newtx_candidates(ul_ran_slice_candidate& 
     if (result.has_value()) {
       // Allocation was successful. Move grant builder to list of pending newTx grants.
       auto& grant_builder = result.value();
+// habib added
+      // allocate_ul_grant() succeeded: this sorted candidate belongs to the
+      // post-feasibility action set exposed to MARL.
+      if (pending_ul_metrics_decision_id.has_value()) {
+        cell_metrics.mark_ul_newtx_candidate_feasible(
+            *pending_ul_metrics_decision_id, ue_candidate.ue->crnti());
+      }
+// habib added
       rb_count += std::min(grant_builder.context().expected_nof_rbs, expected_rbs_per_grant);
       pending_ul_newtxs.push_back(std::move(grant_builder));
       if (rb_count >= rbs_to_alloc) {

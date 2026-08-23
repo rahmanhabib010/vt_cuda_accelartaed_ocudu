@@ -191,6 +191,13 @@ struct scheduler_ul_scheduler_decision {
 
   std::vector<scheduler_ul_retx_candidate>  retx_candidates;
   std::vector<scheduler_ul_newtx_candidate> newtx_candidates;
+// habib added
+  /// Deterministic feasibility mask aligned exactly with newtx_candidates order/rank.
+  /// 1 = allocate_ul_grant() successfully created a pending newTx grant builder.
+  /// 0 = candidate is not part of the post-feasibility pending-builder action set.
+  std::vector<unsigned> feasible_action_mask;
+// habib added
+
   std::vector<scheduler_ul_selected_grant>  selected_grants;
 };
 

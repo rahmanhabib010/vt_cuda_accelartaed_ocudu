@@ -160,10 +160,41 @@ void cell_metrics_handler::add_ul_newtx_candidate(
             pending_bytes_at_decision.value(),
             priority,
             rank});
+// habib added
+    decision->feasible_action_mask.push_back(0);
+// habib added
   }
 }
 
 // habib added
+// habib added
+void cell_metrics_handler::mark_ul_newtx_candidate_feasible(uint64_t decision_id, rnti_t rnti)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    auto candidate_it = std::find_if(
+        decision->newtx_candidates.begin(),
+        decision->newtx_candidates.end(),
+        [rnti](const scheduler_ul_newtx_candidate& candidate) { return candidate.rnti == rnti; });
+
+    if (candidate_it == decision->newtx_candidates.end()) {
+      return;
+    }
+
+    if (decision->feasible_action_mask.size() < decision->newtx_candidates.size()) {
+      decision->feasible_action_mask.resize(decision->newtx_candidates.size(), 0);
+    }
+
+    const size_t candidate_index =
+        static_cast<size_t>(candidate_it - decision->newtx_candidates.begin());
+    decision->feasible_action_mask[candidate_index] = 1;
+  }
+}
+// habib added
+
 void cell_metrics_handler::set_ul_newtx_candidate_grant_context(
     uint64_t                                      decision_id,
     rnti_t                                        rnti,
