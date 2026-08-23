@@ -163,6 +163,42 @@ void cell_metrics_handler::add_ul_newtx_candidate(
   }
 }
 
+// habib added
+void cell_metrics_handler::set_ul_newtx_candidate_grant_context(
+    uint64_t                                      decision_id,
+    rnti_t                                        rnti,
+    const scheduler_ul_newtx_grant_context& grant_context)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    auto candidate_it = std::find_if(
+        decision->newtx_candidates.begin(),
+        decision->newtx_candidates.end(),
+        [rnti](const scheduler_ul_newtx_candidate& candidate) { return candidate.rnti == rnti; });
+
+    if (candidate_it != decision->newtx_candidates.end()) {
+      candidate_it->grant_context = grant_context;
+    }
+  }
+}
+
+void cell_metrics_handler::set_ul_scheduler_state_snapshot(
+    uint64_t                    decision_id,
+    scheduler_ul_state_snapshot snapshot)
+{
+  if (decision_id == 0) {
+    return;
+  }
+
+  if (auto* decision = find_ul_scheduler_decision(decision_id)) {
+    decision->state_snapshot = std::move(snapshot);
+  }
+}
+// habib added
+
 void cell_metrics_handler::add_ul_selected_grant(
     uint64_t             decision_id,
     rnti_t               rnti,

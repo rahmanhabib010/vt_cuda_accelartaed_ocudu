@@ -137,11 +137,42 @@ struct scheduler_ul_retx_candidate {
   unsigned harq_id = 0;
 };
 
+// habib added
+/// Immutable subset of PUSCH configuration used while deriving a newTx UL grant.
+struct scheduler_ul_pusch_cfg_state {
+  unsigned time_domain_resource_index = 0;
+  unsigned start_symbol               = 0;
+  unsigned nof_symbols                = 0;
+  unsigned nof_layers                 = 0;
+  unsigned mcs_table                  = 0;
+  bool     transform_precoding        = false;
+};
+
+/// Decision-time grant-construction context for one newTx candidate.
+struct scheduler_ul_newtx_grant_context {
+  scheduler_prb_range          vrb_lims;
+  unsigned                     min_nof_rbs = 0;
+  unsigned                     max_nof_rbs = 0;
+  unsigned                     recommended_mcs = 0;
+  unsigned                     expected_nof_rbs = 0;
+  scheduler_ul_pusch_cfg_state pusch_cfg;
+};
+
+/// Cell resource state frozen after reTx scheduling and before newTx allocation.
+struct scheduler_ul_state_snapshot {
+  unsigned                         bwp_size_prbs = 0;
+  std::vector<scheduler_prb_range> occupied_prb_ranges;
+  unsigned                         remaining_rbs = 0;
+};
+// habib added
 struct scheduler_ul_newtx_candidate {
   rnti_t   rnti = rnti_t::INVALID_RNTI;
   uint64_t pending_bytes_at_decision = 0;
   double   priority = 0.0;
   unsigned rank = 0;
+// habib added
+  std::optional<scheduler_ul_newtx_grant_context> grant_context;
+// habib added
 };
 
 struct scheduler_ul_selected_grant {
@@ -154,6 +185,9 @@ struct scheduler_ul_scheduler_decision {
   slot_point_extended decision_slot;
   slot_point_extended target_pusch_slot;
   unsigned            k2 = 0;
+// habib added
+  std::optional<scheduler_ul_state_snapshot> state_snapshot;
+// habib added
 
   std::vector<scheduler_ul_retx_candidate>  retx_candidates;
   std::vector<scheduler_ul_newtx_candidate> newtx_candidates;

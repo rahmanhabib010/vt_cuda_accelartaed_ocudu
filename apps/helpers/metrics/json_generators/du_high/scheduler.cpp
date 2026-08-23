@@ -67,6 +67,31 @@ void to_json(nlohmann::json& json, const scheduler_ul_newtx_candidate& candidate
   json["pending_bytes_at_decision"] = candidate.pending_bytes_at_decision;
   json["priority"]                  = candidate.priority;
   json["rank"]                      = candidate.rank;
+
+// habib added
+  if (candidate.grant_context.has_value()) {
+    const auto& ctxt = candidate.grant_context.value();
+
+    json["vrb_lims"] = {
+        {"rb_start", ctxt.vrb_lims.rb_start},
+        {"rb_stop", ctxt.vrb_lims.rb_start + ctxt.vrb_lims.rb_length}};
+
+    json["nof_rb_lims"] = {
+        {"min_prbs", ctxt.min_nof_rbs},
+        {"max_prbs", ctxt.max_nof_rbs}};
+
+    json["recommended_mcs"]  = ctxt.recommended_mcs;
+    json["expected_nof_rbs"] = ctxt.expected_nof_rbs;
+
+    json["pusch_cfg"] = {
+        {"time_domain_resource_index", ctxt.pusch_cfg.time_domain_resource_index},
+        {"start_symbol", ctxt.pusch_cfg.start_symbol},
+        {"nof_symbols", ctxt.pusch_cfg.nof_symbols},
+        {"nof_layers", ctxt.pusch_cfg.nof_layers},
+        {"mcs_table", ctxt.pusch_cfg.mcs_table},
+        {"transform_precoding", ctxt.pusch_cfg.transform_precoding}};
+  }
+// habib added
 }
 
 void to_json(nlohmann::json& json, const scheduler_ul_selected_grant& grant)
@@ -87,6 +112,23 @@ void to_json(nlohmann::json& json, const scheduler_ul_scheduler_decision& decisi
       {"sfn", decision.target_pusch_slot.sfn()},
       {"slot_index", decision.target_pusch_slot.slot_index()}};
   json["k2"]               = decision.k2;
+// habib added
+  if (decision.state_snapshot.has_value()) {
+    const auto& snapshot = decision.state_snapshot.value();
+    auto& state_json = json["state_snapshot"];
+
+    state_json["snapshot_stage"] = "after_retx_before_newtx_allocation";
+    state_json["bwp_size_prbs"]  = snapshot.bwp_size_prbs;
+    state_json["remaining_rbs"]  = snapshot.remaining_rbs;
+    state_json["occupied_prb_ranges"] = nlohmann::json::array();
+
+    for (const auto& range : snapshot.occupied_prb_ranges) {
+      state_json["occupied_prb_ranges"].push_back({
+          {"rb_start", range.rb_start},
+          {"rb_stop", range.rb_start + range.rb_length}});
+    }
+  }
+// habib added
   json["retx_candidates"]  = decision.retx_candidates;
   json["newtx_candidates"] = decision.newtx_candidates;
   json["selected_grants"]  = decision.selected_grants;

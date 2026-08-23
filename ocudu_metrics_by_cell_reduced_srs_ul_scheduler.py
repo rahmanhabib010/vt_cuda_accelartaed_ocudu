@@ -62,23 +62,24 @@ UE_METRICS_KEEP = (
     "ul_ri",
 )
 
+# habib added
+# Preserve the scheduler-decision linkage and finalized PUSCH grant metadata
+# added by the UL scheduler instrumentation. PRB information remains in the
+# existing fields below and is not duplicated anywhere else.
 PUSCH_ALLOCATION_KEEP = (
-# habib added
     "decision_id",
-# habib added
     "allocation_type",
     "bwp_size_prbs",
     "hyper_sfn",
     "nof_prbs",
     "sfn",
     "slot_index",
-# habib added
     "mcs",
     "tbs_bytes",
     "harq_id",
     "crc_status",
-# habib added
 )
+# habib added
 
 PRB_RANGE_KEEP = (
     "rb_start",
@@ -152,11 +153,11 @@ def rnti_key(rnti: Any) -> str:
         return f"RNTI={int(rnti):04X}"
     except (TypeError, ValueError):
         return f"RNTI={rnti}"
+
+
 # habib added
-
-
 def rnti_hex(rnti: Any) -> str:
-    # Decision arrays use bare hexadecimal RNTIs such as "4604".
+    """Format scheduler-decision RNTIs as bare hexadecimal strings, e.g. 4604."""
     try:
         return f"{int(rnti):04X}"
     except (TypeError, ValueError):
@@ -166,6 +167,11 @@ def rnti_hex(rnti: Any) -> str:
 def filter_ul_scheduler_decision(
     decision: dict[str, Any],
 ) -> dict[str, Any]:
+    """
+    Keep the UL scheduler-decision information needed to explain each
+    PUSCH grant without duplicating the PRB allocation already stored
+    under each UE's pusch_allocations[].
+    """
     output: dict[str, Any] = {}
 
     if "decision_id" in decision:
@@ -183,32 +189,6 @@ def filter_ul_scheduler_decision(
     if "k2" in decision:
         output["k2"] = decision["k2"]
 
-    # habib added
-    state_snapshot = decision.get("state_snapshot")
-    if isinstance(state_snapshot, dict):
-        filtered_state: dict[str, Any] = {
-            key: state_snapshot[key]
-            for key in (
-                "snapshot_stage",
-                "bwp_size_prbs",
-                "remaining_rbs",
-            )
-            if key in state_snapshot
-        }
-
-        occupied_ranges = state_snapshot.get("occupied_prb_ranges", [])
-        filtered_state["occupied_prb_ranges"] = [
-            {
-                key: prb_range[key]
-                for key in ("rb_start", "rb_stop")
-                if key in prb_range
-            }
-            for prb_range in occupied_ranges
-            if isinstance(prb_range, dict)
-        ]
-        output["state_snapshot"] = filtered_state
-    # habib added
-
     retx_candidates = decision.get("retx_candidates", [])
     output["retx_candidates"] = [
         {
@@ -224,60 +204,22 @@ def filter_ul_scheduler_decision(
     ]
 
     newtx_candidates = decision.get("newtx_candidates", [])
-    output["newtx_candidates"] = []
-
-    for candidate in newtx_candidates:
-        if not isinstance(candidate, dict):
-            continue
-
-        filtered_candidate: dict[str, Any] = {
+    output["newtx_candidates"] = [
+        {
             "rnti": rnti_hex(candidate.get("rnti")),
-        }
-
-        for key in (
-            "pending_bytes_at_decision",
-            "priority",
-            "rank",
-            "recommended_mcs",
-            "expected_nof_rbs",
-        ):
-            if key in candidate:
-                filtered_candidate[key] = candidate[key]
-
-        # habib added
-        vrb_lims = candidate.get("vrb_lims")
-        if isinstance(vrb_lims, dict):
-            filtered_candidate["vrb_lims"] = {
-                key: vrb_lims[key]
-                for key in ("rb_start", "rb_stop")
-                if key in vrb_lims
-            }
-
-        nof_rb_lims = candidate.get("nof_rb_lims")
-        if isinstance(nof_rb_lims, dict):
-            filtered_candidate["nof_rb_lims"] = {
-                key: nof_rb_lims[key]
-                for key in ("min_prbs", "max_prbs")
-                if key in nof_rb_lims
-            }
-
-        pusch_cfg = candidate.get("pusch_cfg")
-        if isinstance(pusch_cfg, dict):
-            filtered_candidate["pusch_cfg"] = {
-                key: pusch_cfg[key]
+            **{
+                key: candidate[key]
                 for key in (
-                    "time_domain_resource_index",
-                    "start_symbol",
-                    "nof_symbols",
-                    "nof_layers",
-                    "mcs_table",
-                    "transform_precoding",
+                    "pending_bytes_at_decision",
+                    "priority",
+                    "rank",
                 )
-                if key in pusch_cfg
-            }
-        # habib added
-
-        output["newtx_candidates"].append(filtered_candidate)
+                if key in candidate
+            },
+        }
+        for candidate in newtx_candidates
+        if isinstance(candidate, dict)
+    ]
 
     selected_grants = decision.get("selected_grants", [])
     output["selected_grants"] = [
@@ -295,6 +237,7 @@ def filter_ul_scheduler_decision(
 
     return output
 # habib added
+
 
 def learn_pci_mapping_from_mac(metric: dict[str, Any]) -> None:
     """
@@ -484,6 +427,9 @@ def transform_scheduler_report(
           "cells": {
             "PCI=01": {
               "cell_metrics": {...},
+              # habib added
+              "ul_scheduler_decisions": [...],
+              # habib added
               "ues": {...}
             }
           }
@@ -526,24 +472,26 @@ def transform_scheduler_report(
                 for key in CELL_METRICS_KEEP
                 if key in raw_cell_metrics
             },
-# habib added
+            # habib added
+            # Always expose UL scheduler decisions in the reduced JSON.
             "ul_scheduler_decisions": [],
-# habib added
+            # habib added
             "ues": {},
         }
-# habib added
 
+        # habib added
         raw_ul_scheduler_decisions = cell.get(
             "ul_scheduler_decisions",
             [],
         )
+
         if isinstance(raw_ul_scheduler_decisions, list):
             cell_output["ul_scheduler_decisions"] = [
                 filter_ul_scheduler_decision(decision)
                 for decision in raw_ul_scheduler_decisions
                 if isinstance(decision, dict)
             ]
-# habib added
+        # habib added
 
         ue_list = cell.get("ue_list", [])
 

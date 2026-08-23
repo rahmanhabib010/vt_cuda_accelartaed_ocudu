@@ -4,10 +4,36 @@
 
 #include "intra_slice_scheduler.h"
 #include "../logging/scheduler_metrics_handler.h"
+// habib added
+#include "grant_params_selector.h"
+// habib added
 #include "ocudu/ran/pdcch/search_space.h"
 #include "ocudu/support/math/mod_math_utils.h"
 
 using namespace ocudu;
+// habib added
+static std::vector<scheduler_prb_range> snapshot_occupied_ul_prb_ranges(const vrb_bitmap& used_vrbs)
+{
+  std::vector<scheduler_prb_range> ranges;
+
+  unsigned rb = 0;
+  while (rb < used_vrbs.size()) {
+    if (not used_vrbs.test(rb)) {
+      ++rb;
+      continue;
+    }
+
+    const unsigned rb_start = rb;
+    while (rb < used_vrbs.size() and used_vrbs.test(rb)) {
+      ++rb;
+    }
+
+    ranges.push_back(scheduler_prb_range{rb_start, rb - rb_start});
+  }
+
+  return ranges;
+}
+// habib added
 
 /// \brief Helper function to determine the expected number of PDSCHs that can be allocated per slot in a manner that
 /// ensures fair distribution of PDSCHs across slots.
@@ -233,7 +259,21 @@ bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, sched
   // Schedule reTxs.
   unsigned nof_retxs_alloc = schedule_ul_retx_candidates(slice, puschs_to_alloc);
   puschs_to_alloc -= std::min(puschs_to_alloc, nof_retxs_alloc);
+
+  // habib added
+  // Capture immutable post-reTx state for every UL scheduler decision.
+  // This executes before any early return and before newTx allocation.
+  if (pending_ul_metrics_decision_id.has_value()) {
+    scheduler_ul_state_snapshot snapshot{};
+    snapshot.bwp_size_prbs       = static_cast<unsigned>(used_ul_vrbs.size());
+    snapshot.occupied_prb_ranges = snapshot_occupied_ul_prb_ranges(used_ul_vrbs);
+    snapshot.remaining_rbs       = slice.remaining_rbs();
+    cell_metrics.set_ul_scheduler_state_snapshot(
+        *pending_ul_metrics_decision_id, std::move(snapshot));
+  }
+  // habib added
   if (puschs_to_alloc == 0) {
+
 // habib added
     cell_metrics.finish_ul_scheduler_decision(*pending_ul_metrics_decision_id);
     pending_ul_metrics_decision_id.reset();
@@ -511,6 +551,41 @@ void intra_slice_scheduler::prepare_newtx_ul_candidates(const ul_ran_slice_candi
           candidate.pending_bytes,
           candidate.priority,
           idx + 1);
+
+// habib added
+      // Capture the exact UL grant context before any newTx grant reservation/allocation.
+      const unsigned pending_uci_harq_bits =
+          uci_alloc.get_scheduled_pdsch_counter_in_ue_uci(pusch_slot, candidate.ue->crnti());
+
+      const auto sched_ctxt = sched_helper::get_newtx_ul_sched_context(
+          *candidate.ue,
+          pdcch_slot,
+          pusch_slot,
+          pending_uci_harq_bits,
+          candidate.pending_bytes,
+          ofdm_symbol_range{0, min_srs_symbol});
+
+      if (sched_ctxt.has_value()) {
+        scheduler_ul_newtx_grant_context grant_context{};
+
+        grant_context.vrb_lims = scheduler_prb_range{
+            sched_ctxt->vrb_lims.start(), static_cast<unsigned>(sched_ctxt->vrb_lims.length())};
+        grant_context.min_nof_rbs      = sched_ctxt->nof_rb_lims.start();
+        grant_context.max_nof_rbs      = sched_ctxt->nof_rb_lims.stop();
+        grant_context.recommended_mcs  = sched_ctxt->recommended_mcs.value();
+        grant_context.expected_nof_rbs = sched_ctxt->expected_nof_rbs;
+
+        grant_context.pusch_cfg.time_domain_resource_index = sched_ctxt->pusch_td_res_index;
+        grant_context.pusch_cfg.start_symbol               = sched_ctxt->pusch_cfg.symbols.start();
+        grant_context.pusch_cfg.nof_symbols                = sched_ctxt->pusch_cfg.symbols.length();
+        grant_context.pusch_cfg.nof_layers                 = sched_ctxt->pusch_cfg.nof_layers;
+        grant_context.pusch_cfg.mcs_table = static_cast<unsigned>(sched_ctxt->pusch_cfg.mcs_table);
+        grant_context.pusch_cfg.transform_precoding = sched_ctxt->pusch_cfg.use_transform_precoder;
+
+        cell_metrics.set_ul_newtx_candidate_grant_context(
+            *pending_ul_metrics_decision_id, candidate.ue->crnti(), grant_context);
+      }
+// habib added
     }
   }
 // habib added

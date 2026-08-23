@@ -233,6 +233,12 @@ public:
                               units::bytes pending_bytes_at_decision,
                               double       priority,
                               unsigned     rank);
+// habib added
+  void set_ul_newtx_candidate_grant_context(uint64_t                                      decision_id,
+                                            rnti_t                                        rnti,
+                                            const scheduler_ul_newtx_grant_context& grant_context);
+  void set_ul_scheduler_state_snapshot(uint64_t decision_id, scheduler_ul_state_snapshot snapshot);
+// habib added
   void add_ul_selected_grant(uint64_t             decision_id,
                              rnti_t               rnti,
                              scheduler_ul_tx_type tx_type,
