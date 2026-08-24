@@ -267,6 +267,22 @@ void to_json(
 //habib added
 
 //habib added
+// habib added
+void to_json(
+    nlohmann::json& json,
+    const scheduler_late_crc_update& update)
+{
+  json["decision_id"] = update.decision_id;
+  json["rnti"]        = update.rnti;
+  json["target_pusch_slot"] = {
+      {"hyper_sfn", update.target_pusch_slot.hyper_sfn()},
+      {"sfn", update.target_pusch_slot.sfn()},
+      {"slot_index", update.target_pusch_slot.slot_index()}};
+  json["harq_id"]    = update.harq_id;
+  json["crc_status"] = crc_status_to_string(update.crc_status);
+}
+// habib added
+
 void to_json(
     nlohmann::json& json,
     const scheduler_srs_report& report)
@@ -560,6 +576,9 @@ void to_json(
 // habib added
   json["ul_scheduler_decisions"] =
       metrics.ul_scheduler_decisions;
+// habib added
+  json["late_crc_updates"] = metrics.late_crc_updates;
+// habib added
 
 // habib added
   if (!metrics.ue_metrics.empty()) {

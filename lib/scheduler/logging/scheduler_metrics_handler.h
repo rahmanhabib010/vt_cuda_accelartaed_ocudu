@@ -177,6 +177,16 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
     slot_point target_pusch_slot;
 // habib added
   };
+// habib added
+  /// PUSCH already exported with crc_status=pending; survives report reset.
+  struct pending_pusch_outcome {
+    uint64_t            decision_id = 0;
+    rnti_t              rnti = rnti_t::INVALID_RNTI;
+    slot_point_extended target_pusch_slot;
+    unsigned            harq_id = 0;
+  };
+// habib added
+
 
   scheduler_cell_metrics_notifier& notifier;
   const cell_configuration&        cell_cfg;
@@ -193,6 +203,11 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
   std::vector<unsigned>                               dl_prbs_used_per_tdd_slot_idx;
 // habib added
   std::vector<pending_ul_grant_correlation>           pending_ul_grant_correlations;
+// habib added
+  std::vector<pending_pusch_outcome>     pending_pusch_outcomes;
+  std::vector<scheduler_late_crc_update> late_crc_updates_for_next_report;
+// habib added
+
   uint64_t                                            next_ul_scheduler_decision_id = 1;
 // habib added
 

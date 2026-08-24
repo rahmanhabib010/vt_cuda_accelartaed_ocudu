@@ -41,6 +41,9 @@ private:
 // habib added
     null_report.ul_scheduler_decisions.clear();
 // habib added
+// habib added
+    null_report.late_crc_updates.clear();
+// habib added
   }
   bool is_sched_report_required(slot_point_extended sl_tx) const override { return false; }
 
@@ -382,15 +385,43 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
     auto& u = ues[crc_pdu.ue_index];
 // habib added
 
+    const scheduler_pusch_crc_status final_crc_status =
+        crc_pdu.tb_crc_success ? scheduler_pusch_crc_status::pass
+                               : scheduler_pusch_crc_status::fail;
+
+    bool updated_current_report_allocation = false;
+
     for (auto it = u.data.pusch_allocations.rbegin();
          it != u.data.pusch_allocations.rend();
          ++it) {
       if (it->slot.without_hyper_sfn() == sl_rx &&
           it->harq_id == static_cast<unsigned>(crc_pdu.harq_id)) {
-        it->crc_status = crc_pdu.tb_crc_success
-                             ? scheduler_pusch_crc_status::pass
-                             : scheduler_pusch_crc_status::fail;
+        it->crc_status = final_crc_status;
+        updated_current_report_allocation = true;
         break;
+      }
+    }
+
+    if (not updated_current_report_allocation) {
+      auto pending_it = std::find_if(
+          pending_pusch_outcomes.begin(),
+          pending_pusch_outcomes.end(),
+          [&](const pending_pusch_outcome& pending) {
+            return pending.rnti == u.rnti &&
+                   pending.target_pusch_slot.without_hyper_sfn() == sl_rx &&
+                   pending.harq_id == static_cast<unsigned>(crc_pdu.harq_id);
+          });
+
+      if (pending_it != pending_pusch_outcomes.end()) {
+        scheduler_late_crc_update update{};
+        update.decision_id       = pending_it->decision_id;
+        update.rnti              = pending_it->rnti;
+        update.target_pusch_slot = pending_it->target_pusch_slot;
+        update.harq_id           = pending_it->harq_id;
+        update.crc_status        = final_crc_status;
+
+        late_crc_updates_for_next_report.push_back(std::move(update));
+        pending_pusch_outcomes.erase(pending_it);
       }
     }
 
@@ -731,6 +762,43 @@ void cell_metrics_handler::handle_late_ul_harqs()
 void cell_metrics_handler::report_metrics()
 {
   auto next_report = notifier.get_builder();
+
+// habib added
+  // Preserve unresolved PUSCHs before compute_report() moves/reset them.
+  for (const ue_metric_context& ue : ues) {
+    for (const scheduler_pusch_allocation& allocation : ue.data.pusch_allocations) {
+      if (allocation.crc_status != scheduler_pusch_crc_status::pending ||
+          not allocation.decision_id.has_value()) {
+        continue;
+      }
+
+      const uint64_t decision_id = allocation.decision_id.value();
+
+      const bool already_pending = std::any_of(
+          pending_pusch_outcomes.begin(),
+          pending_pusch_outcomes.end(),
+          [&](const pending_pusch_outcome& pending) {
+            return pending.decision_id == decision_id &&
+                   pending.rnti == ue.rnti &&
+                   pending.target_pusch_slot.count() == allocation.slot.count() &&
+                   pending.harq_id == allocation.harq_id;
+          });
+
+      if (not already_pending) {
+        pending_pusch_outcomes.push_back(
+            pending_pusch_outcome{
+                decision_id,
+                ue.rnti,
+                allocation.slot,
+                allocation.harq_id});
+      }
+    }
+  }
+
+  next_report->late_crc_updates = std::move(late_crc_updates_for_next_report);
+  late_crc_updates_for_next_report.clear();
+// habib added
+
 
   const std::chrono::milliseconds report_period{data.nof_slots / last_slot_tx.nof_slots_per_subframe()};
   for (ue_metric_context& ue : ues) {
@@ -1280,6 +1348,10 @@ void cell_metrics_handler::handle_cell_deactivation()
   last_slot_tx = {};
 // habib added
   pending_ul_grant_correlations.clear();
+// habib added
+// habib added
+  pending_pusch_outcomes.clear();
+  late_crc_updates_for_next_report.clear();
 // habib added
 }
 

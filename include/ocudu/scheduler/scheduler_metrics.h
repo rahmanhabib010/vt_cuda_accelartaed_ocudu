@@ -100,6 +100,18 @@ struct scheduler_pusch_allocation {
 // habib added
 };
 // habib added
+/// Final CRC received after the PUSCH allocation was already emitted in an
+/// earlier metrics report. Join using decision_id + RNTI + HARQ ID + target slot.
+struct scheduler_late_crc_update {
+  uint64_t                   decision_id = 0;
+  rnti_t                     rnti = rnti_t::INVALID_RNTI;
+  slot_point_extended        target_pusch_slot;
+  unsigned                   harq_id = 0;
+  scheduler_pusch_crc_status crc_status = scheduler_pusch_crc_status::pending;
+};
+// habib added
+
+// habib added
 
 //habib added
 /// Detailed information associated with one received UE SRS.
@@ -370,6 +382,11 @@ struct scheduler_cell_metrics {
   std::vector<unsigned>             pdsch_prbs_used_per_tdd_slot_idx;
 // habib added
   std::vector<scheduler_ul_scheduler_decision> ul_scheduler_decisions;
+// habib added
+  /// Final CRC results for PUSCHs that were pending in an earlier report.
+  std::vector<scheduler_late_crc_update> late_crc_updates;
+// habib added
+
 // habib added
   std::vector<scheduler_cell_event> events;
   std::vector<scheduler_ue_metrics> ue_metrics;
