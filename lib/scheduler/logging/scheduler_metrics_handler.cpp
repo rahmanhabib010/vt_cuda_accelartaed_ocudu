@@ -397,6 +397,10 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
       if (it->slot.without_hyper_sfn() == sl_rx &&
           it->harq_id == static_cast<unsigned>(crc_pdu.harq_id)) {
         it->crc_status = final_crc_status;
+// habib added
+        it->pusch_sinr_db = crc_pdu.ul_sinr_dB;
+        it->pusch_rsrp_db = crc_pdu.ul_rsrp_dBFS;
+// habib added
         updated_current_report_allocation = true;
         break;
       }
@@ -419,6 +423,10 @@ void cell_metrics_handler::handle_crc_indication(slot_point                   sl
         update.target_pusch_slot = pending_it->target_pusch_slot;
         update.harq_id           = pending_it->harq_id;
         update.crc_status        = final_crc_status;
+// habib added
+        update.pusch_sinr_db     = crc_pdu.ul_sinr_dB;
+        update.pusch_rsrp_db     = crc_pdu.ul_rsrp_dBFS;
+// habib added
 
         late_crc_updates_for_next_report.push_back(std::move(update));
         pending_pusch_outcomes.erase(pending_it);

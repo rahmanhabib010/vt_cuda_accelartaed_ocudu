@@ -263,6 +263,14 @@ void to_json(
   json["crc_status"] =
       crc_status_to_string(allocation.crc_status);
 // habib added
+  json["pusch_sinr_db"] = allocation.pusch_sinr_db.has_value()
+                              ? nlohmann::json(allocation.pusch_sinr_db.value())
+                              : nlohmann::json(nullptr);
+  json["pusch_rsrp_db"] = allocation.pusch_rsrp_db.has_value()
+                              ? nlohmann::json(allocation.pusch_rsrp_db.value())
+                              : nlohmann::json(nullptr);
+// habib added
+// habib added
 }
 //habib added
 
@@ -280,6 +288,14 @@ void to_json(
       {"slot_index", update.target_pusch_slot.slot_index()}};
   json["harq_id"]    = update.harq_id;
   json["crc_status"] = crc_status_to_string(update.crc_status);
+// habib added
+  json["pusch_sinr_db"] = update.pusch_sinr_db.has_value()
+                              ? nlohmann::json(update.pusch_sinr_db.value())
+                              : nlohmann::json(nullptr);
+  json["pusch_rsrp_db"] = update.pusch_rsrp_db.has_value()
+                              ? nlohmann::json(update.pusch_rsrp_db.value())
+                              : nlohmann::json(nullptr);
+// habib added
 }
 // habib added
 

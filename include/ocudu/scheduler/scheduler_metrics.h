@@ -98,6 +98,13 @@ struct scheduler_pusch_allocation {
   /// CRC state for this PUSCH.
   scheduler_pusch_crc_status crc_status = scheduler_pusch_crc_status::pending;
 // habib added
+  /// SINR reported by the CRC/PUSCH reception indication for this exact transmission.
+  std::optional<float> pusch_sinr_db;
+
+  /// RSRP reported by the CRC/PUSCH reception indication for this exact transmission.
+  std::optional<float> pusch_rsrp_db;
+// habib added
+// habib added
 };
 // habib added
 /// Final CRC received after the PUSCH allocation was already emitted in an
@@ -108,6 +115,11 @@ struct scheduler_late_crc_update {
   slot_point_extended        target_pusch_slot;
   unsigned                   harq_id = 0;
   scheduler_pusch_crc_status crc_status = scheduler_pusch_crc_status::pending;
+// habib added
+  /// Exact radio measurements from the late CRC/PUSCH reception indication.
+  std::optional<float> pusch_sinr_db;
+  std::optional<float> pusch_rsrp_db;
+// habib added
 };
 // habib added
 
