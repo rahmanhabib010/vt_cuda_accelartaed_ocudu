@@ -268,6 +268,11 @@ bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, sched
     snapshot.bwp_size_prbs       = static_cast<unsigned>(used_ul_vrbs.size());
     snapshot.occupied_prb_ranges = snapshot_occupied_ul_prb_ranges(used_ul_vrbs);
     snapshot.remaining_rbs       = slice.remaining_rbs();
+// habib added
+    const unsigned free_ul_prbs = static_cast<unsigned>((~used_ul_vrbs).count());
+    snapshot.final_usable_prbs =
+        std::min(snapshot.bwp_size_prbs, std::min(snapshot.remaining_rbs, free_ul_prbs));
+// habib added
     cell_metrics.set_ul_scheduler_state_snapshot(
         *pending_ul_metrics_decision_id, std::move(snapshot));
   }

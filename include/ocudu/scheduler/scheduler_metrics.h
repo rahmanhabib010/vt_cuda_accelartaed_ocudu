@@ -163,6 +163,10 @@ struct scheduler_ul_state_snapshot {
   unsigned                         bwp_size_prbs = 0;
   std::vector<scheduler_prb_range> occupied_prb_ranges;
   unsigned                         remaining_rbs = 0;
+// habib added
+  /// Final decision-time usable PRBs after BWP, slice-budget and occupied-VRB limits.
+  unsigned                         final_usable_prbs = 0;
+// habib added
 };
 // habib added
 struct scheduler_ul_newtx_candidate {

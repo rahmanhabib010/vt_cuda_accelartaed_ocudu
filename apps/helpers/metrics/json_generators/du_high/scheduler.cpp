@@ -120,6 +120,9 @@ void to_json(nlohmann::json& json, const scheduler_ul_scheduler_decision& decisi
     state_json["snapshot_stage"] = "after_retx_before_newtx_allocation";
     state_json["bwp_size_prbs"]  = snapshot.bwp_size_prbs;
     state_json["remaining_rbs"]  = snapshot.remaining_rbs;
+// habib added
+    state_json["final_usable_prbs"] = snapshot.final_usable_prbs;
+// habib added
     state_json["occupied_prb_ranges"] = nlohmann::json::array();
 
     for (const auto& range : snapshot.occupied_prb_ranges) {
