@@ -5,6 +5,9 @@
 #include "ue_scheduler_impl.h"
 #include "../logging/scheduler_metrics_handler.h"
 
+// habib added
+// habib added
+
 using namespace ocudu;
 
 ue_scheduler_impl::ue_scheduler_impl(const scheduler_ue_expert_config& expert_cfg_) :
@@ -91,6 +94,26 @@ bool ue_scheduler_impl::collect_next_ul_sched_batch(du_cell_index_t cell_index)
   return false;
 }
 
+// habib added
+bool ue_scheduler_impl::collect_next_ul_sched_batch(du_cell_index_t cell_index, uint64_t sync_id)
+{
+  auto& cell = cells[cell_index];
+
+  while (auto ul_slice_candidate = cell.slice_sched.get_next_ul_candidate()) {
+    scheduler_policy& policy = cell.slice_sched.get_policy(ul_slice_candidate->id());
+
+    if (cell.intra_slice_sched.collect_ul_sched(ul_slice_candidate.value(), policy, sync_id)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+// habib added - PART21_LOCAL_COLLECT_COMPLETE
+// habib added
+
+// habib added
+
 [[maybe_unused]] static bool puxch_grant_sanitizer(cell_resource_allocator& cell_alloc, ocudulog::basic_logger& logger)
 {
   const unsigned HARQ_SLOT_DELAY = 0;
@@ -167,11 +190,64 @@ void ue_scheduler_impl::run_slot_impl(slot_point sl_tx)
 
   // Advance UL scheduling in synchronized rounds. Each active cell collects at most one feasible newTx builder batch
   // and then yields. Only after all cells have either yielded or exhausted their UL work can any cell derive its VRBs.
+  // habib added - PART21_SAFE_SHARED_UL_ROUND_LOOP
+  // Do not rendezvous during one-cell startup. Both cell groups first have to
+  // be observed on the same slot; synchronization starts from a following slot.
+  bool slot_sync_enabled =
+      multicell_sync != nullptr &&
+      multicell_sync->observe_slot(participant_tag, static_cast<uint64_t>(sl_tx.count()));
+
+  uint32_t multicell_round_index = 1;
+
   while (true) {
-    bool any_pending_ul_batch = false;
+    // Always reserve a valid local fallback ID. If the cross-group rendezvous
+    // is unavailable or times out, the existing independent scheduler uses it.
+    uint64_t sync_id = next_multicell_sync_id++;
+    bool     round_synchronized = false;
+
+    const uint64_t round_key =
+        (static_cast<uint64_t>(sl_tx.count()) << 32U) |
+        static_cast<uint64_t>(multicell_round_index);
+
+    if (slot_sync_enabled) {
+      const multicell_ul_rendezvous::begin_result begin =
+          multicell_sync->begin_round(round_key);
+
+      if (begin.synchronized) {
+        sync_id            = begin.sync_id;
+        round_synchronized = true;
+      } else {
+        slot_sync_enabled = false;
+        logger.warning(
+            "Multi-cell UL begin rendezvous timed out at slot={}; using independent scheduling for this slot",
+            sl_tx);
+      }
+    }
+
+    bool local_pending_ul_batch = false;
+
     for (auto& group_cell : cells) {
-      if (collect_next_ul_sched_batch(group_cell.cell_res_alloc->cfg.cell_index)) {
-        any_pending_ul_batch = true;
+      if (collect_next_ul_sched_batch(group_cell.cell_res_alloc->cfg.cell_index, sync_id)) {
+        local_pending_ul_batch = true;
+      }
+    }
+
+    bool any_pending_ul_batch = local_pending_ul_batch;
+
+    if (round_synchronized) {
+      const multicell_ul_rendezvous::collection_result collected =
+          multicell_sync->finish_collection(round_key, local_pending_ul_batch);
+
+      if (collected.synchronized) {
+        any_pending_ul_batch = collected.any_pending;
+      } else {
+        round_synchronized   = false;
+        slot_sync_enabled    = false;
+        any_pending_ul_batch = local_pending_ul_batch;
+
+        logger.warning(
+            "Multi-cell UL collect rendezvous timed out at slot={}; using independent scheduling for this slot",
+            sl_tx);
       }
     }
 
@@ -179,14 +255,35 @@ void ue_scheduler_impl::run_slot_impl(slot_point sl_tx)
       break;
     }
 
-    // Multi-cell AI input synchronization point. Aligned Top-K observations can be extracted from each pending batch
-    // here. Until a MARL policy is connected, finalization deliberately retains the existing recommendation heuristic.
+    // Multi-cell AI input synchronization point.
+    //
+    // round_synchronized=true means:
+    //   * all registered cell groups entered the same {slot, round},
+    //   * all groups completed collect_ul_sched(),
+    //   * no group has entered finalize_ul_sched() yet.
+    //
+    // This is the intended location for future cross-cell MARL inference.
+
+    // Until MARL is connected, retain the existing OCUDU final VRB logic.
     for (auto& group_cell : cells) {
       if (group_cell.intra_slice_sched.has_pending_ul_sched()) {
         group_cell.intra_slice_sched.finalize_ul_sched();
       }
     }
+
+    if (round_synchronized) {
+      if (not multicell_sync->finish_finalization(round_key)) {
+        slot_sync_enabled = false;
+
+        logger.warning(
+            "Multi-cell UL finalize rendezvous timed out at slot={}; synchronization will re-arm later",
+            sl_tx);
+      }
+    }
+
+    ++multicell_round_index;
   }
+  // habib added - PART21_SAFE_SHARED_UL_ROUND_LOOP
 
   for (auto& group_cell : cells) {
     // The post processing is done for DL and UL slots.

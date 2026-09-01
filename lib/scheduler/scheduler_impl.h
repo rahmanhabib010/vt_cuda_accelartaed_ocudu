@@ -8,6 +8,9 @@
 #include "config/sched_config_manager.h"
 #include "logging/scheduler_metrics_handler.h"
 #include "ue_scheduling/ue_scheduler.h"
+// habib added - PART21 safe multi-cell UL rendezvous
+#include "ue_scheduling/multicell_ul_rendezvous.h"
+// habib added - PART21 safe multi-cell UL rendezvous
 #include "ocudu/scheduler/config/scheduler_expert_config.h"
 #include "ocudu/scheduler/mac_scheduler.h"
 
@@ -73,6 +76,11 @@ private:
 
   // Manager of configurations forwarded to the scheduler.
   sched_config_manager cfg_mng;
+
+// habib added - PART21 safe multi-cell UL rendezvous
+  /// Shared synchronization domain across independent DU cell groups.
+  multicell_ul_rendezvous multicell_ul_sync;
+// habib added - PART21 safe multi-cell UL rendezvous
 
   /// Container of DU Cell Group-specific resources.
   slotted_id_table<du_cell_group_index_t, std::unique_ptr<ue_scheduler>, MAX_DU_CELL_GROUPS> groups;

@@ -234,6 +234,17 @@ void intra_slice_scheduler::ul_sched(ul_ran_slice_candidate slice, scheduler_pol
 
 bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy)
 {
+// habib added
+  return collect_ul_sched(std::move(slice), ul_policy, 0);
+}
+// habib added
+
+// habib added
+bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice,
+                                             scheduler_policy&       ul_policy,
+                                             uint64_t                sync_id)
+// habib added
+{
   ocudu_sanity_check(not has_pending_ul_sched(), "A UL newTx batch is already pending finalization");
   ocudu_sanity_check(slice.remaining_rbs() > 0, "Invalid slice slice");
   if (slice.get_slice_ues().empty()) {
@@ -253,7 +264,8 @@ bool intra_slice_scheduler::collect_ul_sched(ul_ran_slice_candidate slice, sched
 
 // habib added
   pending_ul_metrics_decision_id =
-      cell_metrics.start_ul_scheduler_decision(pdcch_slot, pusch_slot);
+      cell_metrics.start_ul_scheduler_decision(pdcch_slot, pusch_slot, sync_id);
+// habib added
 
 // habib added
   // Schedule reTxs.

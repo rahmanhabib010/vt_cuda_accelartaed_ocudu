@@ -130,6 +130,41 @@ uint64_t cell_metrics_handler::start_ul_scheduler_decision(
   return data.ul_scheduler_decisions.back().decision_id;
 }
 
+// habib added
+uint64_t cell_metrics_handler::start_ul_scheduler_decision(
+    slot_point decision_slot,
+    slot_point target_pusch_slot,
+    uint64_t   sync_id)
+{
+  const uint64_t local_decision_id =
+      start_ul_scheduler_decision(decision_slot, target_pusch_slot);
+
+  if (local_decision_id == 0) {
+    return 0;
+  }
+
+  uint64_t returned_decision_id = local_decision_id;
+
+  if (auto* decision = find_ul_scheduler_decision(local_decision_id)) {
+    if (sync_id != 0) {
+      // Keep the common multi-cell sync_id directly in the decision while
+      // preserving a unique internal correlation ID for multiple decisions
+      // that can belong to the same synchronized round.
+      constexpr uint64_t local_id_mask = 0xFFFFULL;
+      returned_decision_id =
+          (sync_id << 16U) | (local_decision_id & local_id_mask);
+
+      decision->sync_id     = sync_id;
+      decision->decision_id = returned_decision_id;
+    } else {
+      decision->sync_id = local_decision_id;
+    }
+  }
+
+  return returned_decision_id;
+}
+// habib added
+
 void cell_metrics_handler::add_ul_retx_candidate(
     uint64_t  decision_id,
     rnti_t    rnti,
@@ -796,6 +831,9 @@ void cell_metrics_handler::report_metrics()
         pending_pusch_outcomes.push_back(
             pending_pusch_outcome{
                 decision_id,
+// habib added
+                ((decision_id >> 16U) != 0 ? (decision_id >> 16U) : decision_id),
+// habib added
                 ue.rnti,
                 allocation.slot,
                 allocation.harq_id});

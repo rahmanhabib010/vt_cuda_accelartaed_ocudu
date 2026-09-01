@@ -181,6 +181,9 @@ class cell_metrics_handler final : public sched_metrics_ue_configurator
   /// PUSCH already exported with crc_status=pending; survives report reset.
   struct pending_pusch_outcome {
     uint64_t            decision_id = 0;
+// habib added
+    uint64_t            sync_id = 0;
+// habib added
     rnti_t              rnti = rnti_t::INVALID_RNTI;
     slot_point_extended target_pusch_slot;
     unsigned            harq_id = 0;
@@ -242,6 +245,11 @@ public:
 // habib added
 
   uint64_t start_ul_scheduler_decision(slot_point decision_slot, slot_point target_pusch_slot);
+// habib added
+  uint64_t start_ul_scheduler_decision(slot_point decision_slot,
+                                       slot_point target_pusch_slot,
+                                       uint64_t   sync_id);
+// habib added
   void add_ul_retx_candidate(uint64_t decision_id, rnti_t rnti, harq_id_t harq_id);
   void add_ul_newtx_candidate(uint64_t     decision_id,
                               rnti_t       rnti,

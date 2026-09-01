@@ -46,6 +46,10 @@ public:
   bool collect_ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy);
 
   /// Finalize the pending UL newTx batch using the default VRB recommendation heuristic.
+// habib added
+  bool collect_ul_sched(ul_ran_slice_candidate slice, scheduler_policy& ul_policy, uint64_t sync_id);
+// habib added
+
   void finalize_ul_sched();
 
   /// Returns true when UL newTx builders are waiting at the multi-cell synchronization point.

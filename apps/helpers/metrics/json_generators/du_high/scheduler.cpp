@@ -102,7 +102,9 @@ void to_json(nlohmann::json& json, const scheduler_ul_selected_grant& grant)
 
 void to_json(nlohmann::json& json, const scheduler_ul_scheduler_decision& decision)
 {
-  json["decision_id"] = decision.decision_id;
+// habib added
+  json["sync_id"] = decision.sync_id != 0 ? decision.sync_id : decision.decision_id;
+// habib added
   json["decision_slot"] = {
       {"hyper_sfn", decision.decision_slot.hyper_sfn()},
       {"sfn", decision.decision_slot.sfn()},
@@ -227,10 +229,11 @@ void to_json(
 {
 // habib added
   if (allocation.decision_id.has_value()) {
-    json["decision_id"] =
-        allocation.decision_id.value();
+    const uint64_t encoded_sync_id = allocation.decision_id.value() >> 16U;
+    json["sync_id"] = allocation.sync_id.has_value()
+                          ? allocation.sync_id.value()
+                          : (encoded_sync_id != 0 ? encoded_sync_id : allocation.decision_id.value());
   }
-
 // habib added
   json["hyper_sfn"] =
       allocation.slot.hyper_sfn();
@@ -280,7 +283,12 @@ void to_json(
     nlohmann::json& json,
     const scheduler_late_crc_update& update)
 {
-  json["decision_id"] = update.decision_id;
+// habib added
+  const uint64_t encoded_sync_id = update.decision_id >> 16U;
+  json["sync_id"] = update.sync_id != 0
+                        ? update.sync_id
+                        : (encoded_sync_id != 0 ? encoded_sync_id : update.decision_id);
+// habib added
   json["rnti"]        = update.rnti;
   json["target_pusch_slot"] = {
       {"hyper_sfn", update.target_pusch_slot.hyper_sfn()},

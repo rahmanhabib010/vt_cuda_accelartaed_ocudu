@@ -15,6 +15,9 @@
 #include "ue_event_manager.h"
 #include "ue_fallback_scheduler.h"
 #include "ue_scheduler.h"
+// habib added - PART21 safe multi-cell UL rendezvous
+#include "multicell_ul_rendezvous.h"
+// habib added - PART21 safe multi-cell UL rendezvous
 #include "ocudu/scheduler/config/scheduler_expert_config.h"
 #include <mutex>
 
@@ -26,6 +29,22 @@ class ue_scheduler_impl final : public ue_scheduler
 {
 public:
   explicit ue_scheduler_impl(const scheduler_ue_expert_config& expert_cfg_);
+
+// habib added - PART21 safe multi-cell UL rendezvous
+  /// Connect this DU cell-group scheduler to the scheduler-wide rendezvous.
+  void set_multicell_rendezvous(multicell_ul_rendezvous& sync, unsigned participant_tag_)
+  {
+    multicell_sync   = &sync;
+    participant_tag = participant_tag_;
+
+    // Fallback IDs occupy a group-specific high range and cannot accidentally
+    // look like a successfully shared sync_id.
+    next_multicell_sync_id =
+        (static_cast<uint64_t>(participant_tag + 1U) * 1000000000ULL) + 100001ULL;
+
+    multicell_sync->register_participant(participant_tag);
+  }
+// habib added - PART21 safe multi-cell UL rendezvous
 
 private:
   ue_cell_scheduler* do_add_cell(const ue_cell_scheduler_creation_request& params) override;
@@ -42,6 +61,9 @@ private:
   /// Advances UL scheduling for one cell until it either reaches the newTx synchronization point or runs out of work.
   /// Returns true if the cell has a pending batch that must be finalized.
   bool collect_next_ul_sched_batch(du_cell_index_t cell_index);
+// habib added
+  bool collect_next_ul_sched_batch(du_cell_index_t cell_index, uint64_t sync_id);
+// habib added
 
   struct cell_context final : public ue_cell_scheduler, public uci_indication_timeout_notifier {
     ue_scheduler_impl& parent;
@@ -119,6 +141,15 @@ private:
 
   // Mutex to lock cells of the same cell group (when CA enabled) for joint carrier scheduling
   std::mutex cell_group_mutex;
+
+// habib added
+  uint64_t next_multicell_sync_id = 100001;
+// habib added
+
+// habib added - PART21 safe multi-cell UL rendezvous
+  multicell_ul_rendezvous* multicell_sync = nullptr;
+  unsigned                 participant_tag = 0;
+// habib added - PART21 safe multi-cell UL rendezvous
 
   // Last slot run.
   slot_point last_sl_ind;

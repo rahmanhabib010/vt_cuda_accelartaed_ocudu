@@ -51,6 +51,9 @@ struct scheduler_pusch_allocation {
   /// Empty for PUSCHs created outside the regular intra-slice UE scheduler.
   std::optional<uint64_t> decision_id;
 // habib added
+  std::optional<uint64_t> sync_id;
+// habib added
+// habib added
 
   /// Resource-allocation type:
   ///   0 = RBG bitmap, potentially non-contiguous.
@@ -111,6 +114,9 @@ struct scheduler_pusch_allocation {
 /// earlier metrics report. Join using decision_id + RNTI + HARQ ID + target slot.
 struct scheduler_late_crc_update {
   uint64_t                   decision_id = 0;
+// habib added
+  uint64_t                   sync_id = 0;
+// habib added
   rnti_t                     rnti = rnti_t::INVALID_RNTI;
   slot_point_extended        target_pusch_slot;
   unsigned                   harq_id = 0;
@@ -210,6 +216,9 @@ struct scheduler_ul_selected_grant {
 
 struct scheduler_ul_scheduler_decision {
   uint64_t            decision_id = 0;
+// habib added
+  uint64_t            sync_id = 0;
+// habib added
   slot_point_extended decision_slot;
   slot_point_extended target_pusch_slot;
   unsigned            k2 = 0;

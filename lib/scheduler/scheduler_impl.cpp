@@ -5,6 +5,9 @@
 #include "scheduler_impl.h"
 #include "ue_scheduling/ue_scheduler_impl.h"
 #include "ocudu/support/rtsan.h"
+// habib added - PART21 safe multi-cell UL rendezvous
+#include <utility>
+// habib added - PART21 safe multi-cell UL rendezvous
 
 using namespace ocudu;
 
@@ -23,7 +26,12 @@ bool scheduler_impl::handle_cell_configuration_request(const sched_cell_configur
   // Check if it is a new DU Cell Group.
   if (not groups.contains(msg.cell_group_index)) {
     // If it is a new group, create a new instance.
-    groups.emplace(msg.cell_group_index, std::make_unique<ue_scheduler_impl>(expert_params.ue));
+// habib added - PART21 safe multi-cell UL rendezvous
+    auto group_scheduler = std::make_unique<ue_scheduler_impl>(expert_params.ue);
+    group_scheduler->set_multicell_rendezvous(
+        multicell_ul_sync, static_cast<unsigned>(msg.cell_group_index));
+    groups.emplace(msg.cell_group_index, std::move(group_scheduler));
+// habib added - PART21 safe multi-cell UL rendezvous
   }
 
   // Create a new cell scheduler instance.
@@ -218,6 +226,7 @@ const sched_result& scheduler_impl::slot_indication(slot_point_extended sl_tx,
 {
   ocudu_assert(cells.contains(cell_index), "cell={} does not exist", cell_index);
   cell_scheduler& cell = *cells[cell_index];
+
 
   if (cell_index == to_du_cell_index(0)) {
     // Set scheduler logger context only once per slot.
